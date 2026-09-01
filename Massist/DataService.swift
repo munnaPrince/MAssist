@@ -52,6 +52,22 @@ final class DataService {
         try context.save()
     }
 
+    func updateEntry(_ e: FoodEntry) throws {
+        let req = NSFetchRequest<CDFoodEntry>(entityName: "CDFoodEntry")
+        req.predicate = NSPredicate(format: "id == %@", e.id as CVarArg)
+        let res = try context.fetch(req)
+        if let existing = res.first {
+            existing.date = e.date
+            existing.name = e.name
+            existing.calories = Int32(e.calories)
+            existing.carbsGrams = Int32(e.carbsGrams)
+            existing.proteinGrams = Int32(e.proteinGrams)
+            existing.fatsGrams = Int32(e.fatsGrams)
+            existing.source = e.source.rawValue
+            try context.save()
+        }
+    }
+
     func deleteEntry(id: UUID) throws {
         let req = NSFetchRequest<CDFoodEntry>(entityName: "CDFoodEntry")
         req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
@@ -109,6 +125,49 @@ struct GeminiNutritionService {
         let carbs: Int
         let protein: Int
         let fats: Int
+    }
+
+    private struct Expense: Decodable {
+        let name: String?
+        let amount: Double
+    }
+
+    func analyzeReceipt(image: UIImage, apiKey: String) async throws -> (name: String, amount: Double) {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { throw GeminiNutritionError.invalidAPIKey }
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else { throw GeminiNutritionError.invalidResponse }
+
+        let endpoint = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=\(trimmedKey)")!
+        let prompt = "Analyze this grocery or food bill. Return JSON only with exactly these keys: name (short merchant or purchase description), amount (total amount as a number). Use the final payable total, excluding currency symbols. No markdown or explanation."
+        let requestBody = Request(contents: [.init(parts: [.init(text: prompt, inlineData: nil), .init(text: nil, inlineData: .init(mimeType: "image/jpeg", data: imageData.base64EncodedString()))])])
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(requestBody)
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 300
+        configuration.timeoutIntervalForResource = 300
+        let session = URLSession(configuration: configuration)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch is URLError {
+            throw GeminiNutritionError.requestFailed("Gemini took too long to respond. Try again with a smaller photo.")
+        } catch {
+            throw GeminiNutritionError.requestFailed(error.localizedDescription)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw GeminiNutritionError.requestFailed("Gemini could not read this bill. Check your API key and try again.")
+        }
+        let decodedResponse = try JSONDecoder().decode(Response.self, from: data)
+        guard let text = decodedResponse.candidates?.first?.content.parts.first?.text else { throw GeminiNutritionError.invalidResponse }
+        let cleanText = text.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let expense = try JSONDecoder().decode(Expense.self, from: Data(cleanText.utf8))
+        guard expense.amount >= 0 else { throw GeminiNutritionError.invalidResponse }
+        return (expense.name ?? "Scanned bill", expense.amount)
     }
 
     func analyze(image: UIImage, apiKey: String) async throws -> (name: String, calories: Int, carbs: Int, protein: Int, fats: Int) {
@@ -184,6 +243,34 @@ struct GeminiNutritionService {
         let cleanText = text.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
         let nutrition = try JSONDecoder().decode(Nutrition.self, from: Data(cleanText.utf8))
         return (nutrition.name ?? "Logged Meal", max(0, nutrition.calories), max(0, nutrition.carbs), max(0, nutrition.protein), max(0, nutrition.fats))
+    }
+
+    func generateReportSummary(prompt: String, apiKey: String) async throws -> String {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { throw GeminiNutritionError.invalidAPIKey }
+
+        let endpoint = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=\(trimmedKey)")!
+        let requestBody = Request(contents: [.init(parts: [.init(text: prompt, inlineData: nil)])])
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(requestBody)
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 300
+        configuration.timeoutIntervalForResource = 300
+        let session = URLSession(configuration: configuration)
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw GeminiNutritionError.requestFailed("Gemini could not create your report summary.")
+        }
+        let decodedResponse = try JSONDecoder().decode(Response.self, from: data)
+        guard let text = decodedResponse.candidates?.first?.content.parts.first?.text,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw GeminiNutritionError.invalidResponse
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func motivationalQuote(apiKey: String) async throws -> String {

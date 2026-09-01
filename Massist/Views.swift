@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import CoreMotion
+import MessageUI
 import UserNotifications
 import UniformTypeIdentifiers
 
@@ -376,10 +378,12 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             HomeView().tabItem { Label("Home", systemImage: "house.fill") }.tag(0)
             CaloriesView().tabItem { Label("Calories", systemImage: "fork.knife") }.tag(1)
-            WaterView().tabItem { Label("Water", systemImage: "drop.fill") }.tag(2)
-            WorkoutView().tabItem { Label("Running", systemImage: "figure.run") }.tag(3)
-            ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(4)
-            SettingsView().tabItem { Label("Settings", systemImage: "gearshape.fill") }.tag(5)
+            BudgetTrackerView().tabItem { Label("Budget", systemImage: "chart.pie.fill") }.tag(2)
+            LoansTrackerView().tabItem { Label("Loans", systemImage: "banknote.fill") }.tag(3)
+            WorkoutView().tabItem { Label("Running", systemImage: "figure.run") }.tag(4)
+            WaterView().tabItem { Label("Water", systemImage: "drop.fill") }.tag(5)
+            ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(6)
+            SettingsView().tabItem { Label("Settings", systemImage: "gearshape.fill") }.tag(7)
         }
         .tint(.primaryOrange)
     }
@@ -389,7 +393,7 @@ struct CaloriesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                ScanView(selectedTab: .constant(1))
+                ScanView()
                     .frame(maxHeight: 760)
 
                 Divider()
@@ -407,6 +411,10 @@ struct HomeView: View {
     @EnvironmentObject var store: AppStore
     @State private var motivation = ""
     @State private var motivationStatus = "Loading your daily motivation..."
+    @State private var todaySteps = 0
+    @AppStorage("waterIntakeML") private var waterIntakeML = 0
+    @AppStorage("waterGoalML") private var waterGoalML = 3000
+    private let pedometer = CMPedometer()
 
     var body: some View {
         GeometryReader { geometry in
@@ -414,9 +422,18 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     if let profile = store.profile {
                         let targets = MacroCalculator.targets(for: profile)
-                        let consumed = consumedToday(store: store)
+                        let todayTotals = dailyTotals(entries: store.entries)
                         let firstName = profile.name.split(separator: " ").first.map(String.init) ?? "there"
-                        let isCompact = geometry.size.width < 390
+                        let remainingCalories = max(0, targets.calories - todayTotals.calories)
+                        let waterLitres = Double(waterIntakeML) / 1000.0
+                        let caloriesProgress = targets.calories > 0 ? min(1.0, Double(todayTotals.calories) / Double(targets.calories)) : 0
+                        let proteinProgress = targets.proteinGrams > 0 ? min(1.0, Double(todayTotals.protein) / Double(targets.proteinGrams)) : 0
+                        let fatsProgress = targets.fatsGrams > 0 ? min(1.0, Double(todayTotals.fats) / Double(targets.fatsGrams)) : 0
+                        let waterProgress = waterGoalML > 0 ? min(1.0, Double(waterIntakeML) / Double(waterGoalML)) : 0
+                        let stepsProgress = min(1.0, Double(todaySteps) / 10000.0)
+                        let todaySpending = spendingToday(records: store.budgetRecords)
+                        let totalAmountTaken = store.loans.reduce(0) { $0 + $1.amountTaken }
+                        let totalAmountPaid = store.loans.reduce(0) { $0 + $1.amountPaid }
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .top) {
@@ -442,6 +459,7 @@ struct HomeView: View {
                             }
                             Text(goalLabel(for: profile.goal)).font(.caption.weight(.semibold)).foregroundColor(.primaryOrange).padding(.horizontal, 10).padding(.vertical, 6).background(Color.primaryOrange.opacity(0.12)).clipShape(Capsule())
                         }
+
                         HStack(spacing: 12) {
                             Image(systemName: "quote.opening").font(.title3).foregroundColor(.primaryOrange)
                             if motivation.isEmpty {
@@ -455,53 +473,49 @@ struct HomeView: View {
                         .padding(14)
                         .background(Color.primaryOrange.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 16))
-                        VStack(spacing: 16) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("TODAY'S FUEL").font(.caption2.weight(.bold)).foregroundColor(.white.opacity(0.75))
-                                    Text("Keep your momentum going").font(.headline).foregroundColor(.white)
-                                }
-                                Spacer()
-                                Image(systemName: "flame.fill").font(.title2).foregroundColor(.white)
-                            }
-                            if isCompact {
-                                VStack(alignment: .center, spacing: 14) {
-                                    RingView(progress: progressFraction(store: store, targetCalories: targets.calories), label: "\(consumed)", sublabel: "kcal eaten")
-                                        .frame(maxWidth: .infinity)
-                                        .aspectRatio(1, contentMode: .fit)
 
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        HomeStat(label: "Remaining", value: "\(max(0, targets.calories - consumed)) kcal")
-                                        HomeStat(label: "Daily target", value: "\(targets.calories) kcal")
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            } else {
-                                HStack(alignment: .center, spacing: 20) {
-                                    RingView(progress: progressFraction(store: store, targetCalories: targets.calories), label: "\(consumed)", sublabel: "kcal eaten")
-                                        .frame(maxWidth: .infinity)
-                                        .aspectRatio(1, contentMode: .fit)
-
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        HomeStat(label: "Remaining", value: "\(max(0, targets.calories - consumed)) kcal")
-                                        HomeStat(label: "Daily target", value: "\(targets.calories) kcal")
-                                    }
-                                }
-                            }
-                        }
-                        .padding(20)
-                        .background(LinearGradient(colors: [Color.primaryOrange, Color(red: 0.96, green: 0.35, blue: 0.25)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
-                        .shadow(color: Color.primaryOrange.opacity(0.25), radius: 14, y: 8)
                         VStack(alignment: .leading, spacing: 14) {
-                            HStack { Text("Your daily targets").font(.headline); Spacer(); Image(systemName: "chart.bar.xaxis").foregroundColor(.accentBlue) }
+                            HStack {
+                                Text("Daily overview").font(.headline)
+                                Spacer()
+                                Image(systemName: "sparkles").foregroundColor(.primaryOrange)
+                            }
+
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                                HomeMacroTile(title: "Protein", value: "\(targets.proteinGrams) g", icon: "bolt.fill", color: .accentBlue)
-                                HomeMacroTile(title: "Carbs", value: "\(targets.carbsGrams) g", icon: "leaf.fill", color: .green)
-                                HomeMacroTile(title: "Fats", value: "\(targets.fatsGrams) g", icon: "drop.fill", color: .purple)
-                                HomeMacroTile(title: "Logged", value: "\(store.entries.count) items", icon: "checkmark.circle.fill", color: .primaryOrange)
+                                HomeMetricCard(title: "Calories", value: "\(todayTotals.calories)", unit: "kcal", subtitle: "\(remainingCalories) left", icon: "flame.fill", accent: .primaryOrange, progress: caloriesProgress)
+                                HomeMetricCard(title: "Protein", value: "\(todayTotals.protein)", unit: "g", subtitle: "\(targets.proteinGrams) goal", icon: "bolt.fill", accent: .accentBlue, progress: proteinProgress)
+                                HomeMetricCard(title: "Fats", value: "\(todayTotals.fats)", unit: "g", subtitle: "\(targets.fatsGrams) goal", icon: "drop.fill", accent: .purple, progress: fatsProgress)
+                                HomeMetricCard(title: "Water", value: String(format: "%.1f", waterLitres), unit: "L", subtitle: "\(String(format: "%.1f", Double(waterGoalML) / 1000.0)) L goal", icon: "drop.fill", accent: .blue, progress: waterProgress)
+                                HomeMetricCard(title: "Steps", value: "\(todaySteps)", unit: "steps", subtitle: "daily goal", icon: "shoeprints.fill", accent: .green, progress: stepsProgress)
                             }
                         }
+                        .padding(18)
+                        .background(Color.appCardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack {
+                                Text("Money snapshot").font(.headline)
+                                Spacer()
+                                Image(systemName: "wallet.pass.fill").foregroundColor(.accentBlue)
+                            }
+
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                                HomeFinanceCard(title: "Today's spending", value: currency(todaySpending), subtitle: "budget records", icon: "cart.fill", accent: .primaryOrange)
+                                HomeFinanceCard(title: "Amount taken", value: currency(totalAmountTaken), subtitle: "across loans", icon: "arrow.down.circle.fill", accent: .accentBlue)
+                                HomeFinanceCard(title: "Amount paid", value: currency(totalAmountPaid), subtitle: "loan repayments", icon: "checkmark.circle.fill", accent: .green)
+                            }
+                        }
+                        .padding(18)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.accentBlue.opacity(0.10), Color.appCardBackground],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+
                         if store.entries.isEmpty {
                             HStack(spacing: 14) {
                                 Image(systemName: "fork.knife.circle.fill").font(.title2).foregroundColor(.accentBlue)
@@ -520,7 +534,8 @@ struct HomeView: View {
             }
         }
         .background(Color.appBackground.ignoresSafeArea())
-        .task(id: store.profile?.geminiAPIKey) {
+        .task {
+            loadTodaySteps()
             await loadDailyMotivation()
         }
     }
@@ -580,6 +595,931 @@ struct HomeView: View {
     private func progressFraction(store: AppStore, targetCalories: Int) -> Double {
         guard targetCalories > 0 else { return 0 }
         return min(1.0, Double(consumedToday(store: store)) / Double(targetCalories))
+    }
+
+    private func loadTodaySteps() {
+        guard CMPedometer.isStepCountingAvailable() else {
+            todaySteps = 0
+            return
+        }
+
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        pedometer.queryPedometerData(from: startOfDay, to: Date()) { data, error in
+            let steps = data.flatMap { Int(truncating: $0.numberOfSteps) } ?? 0
+            DispatchQueue.main.async {
+                self.todaySteps = steps
+            }
+        }
+    }
+
+    private func dailyTotals(entries: [FoodEntry]) -> (calories: Int, protein: Int, carbs: Int, fats: Int) {
+        let today = Calendar.current.startOfDay(for: Date())
+        let s = entries.filter { Calendar.current.startOfDay(for: $0.date) == today }
+        return (
+            s.reduce(0) { $0 + $1.calories },
+            s.reduce(0) { $0 + $1.proteinGrams },
+            s.reduce(0) { $0 + $1.carbsGrams },
+            s.reduce(0) { $0 + $1.fatsGrams }
+        )
+    }
+
+    private func spendingToday(records: [BudgetRecord]) -> Double {
+        let today = Calendar.current.startOfDay(for: Date())
+        return records
+            .filter { Calendar.current.startOfDay(for: $0.date) == today }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private func currency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+}
+
+struct HomeMetricCard: View {
+    let title: String
+    let value: String
+    let unit: String
+    let subtitle: String
+    let icon: String
+    let accent: Color
+    let progress: Double
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(accent)
+                        .frame(width: 26, height: 26)
+                        .background(accent.opacity(0.12))
+                        .clipShape(Circle())
+                    Spacer()
+                    Text(title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(value).font(.title2.weight(.bold))
+                        Text(unit).font(.caption.weight(.semibold)).foregroundColor(.secondary)
+                    }
+                    Text(subtitle).font(.caption2).foregroundColor(.secondary)
+                }
+            }
+
+            MiniProgressRing(value: progress, accent: accent)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                gradient: Gradient(colors: [accent.opacity(0.16), Color.appCardBackground]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .shadow(color: accent.opacity(0.08), radius: 10, x: 0, y: 8)
+    }
+}
+
+struct HomeFinanceCard: View {
+    let title: String
+    let value: String
+    let subtitle: String
+    let icon: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: icon)
+                .font(.subheadline.weight(.bold))
+                .foregroundColor(accent)
+                .frame(width: 28, height: 28)
+                .background(accent.opacity(0.14))
+                .clipShape(Circle())
+
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+            Text(value)
+                .font(.title3.weight(.bold))
+                .foregroundColor(accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(accent.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct MiniProgressRing: View {
+    let value: Double
+    let accent: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(accent.opacity(0.18), lineWidth: 5)
+            Circle()
+                .trim(from: 0, to: value)
+                .stroke(accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.easeInOut(duration: 0.45), value: value)
+
+            Text("\(Int(round(value * 100)))%")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(accent)
+        }
+        .frame(width: 46, height: 46)
+    }
+}
+
+struct BudgetTrackerView: View {
+    @EnvironmentObject var store: AppStore
+    @FocusState private var focusedField: BudgetField?
+    @State private var inputMode = BudgetInputMode.manual
+    @State private var showingPicker = false
+    @State private var pickedImage: UIImage?
+    @State private var receiptAnalysis: (name: String, amount: Double)?
+    @State private var recordName = ""
+    @State private var recordAmount = ""
+    @State private var isAnalyzing = false
+    @State private var message = ""
+
+    private var todayRecords: [BudgetRecord] {
+        let today = Calendar.current.startOfDay(for: Date())
+        return store.budgetRecords.filter { Calendar.current.startOfDay(for: $0.date) == today }
+    }
+
+    private var todayTotal: Double {
+        todayRecords.reduce(0) { $0 + $1.amount }
+    }
+
+    private var hasGeminiKey: Bool {
+        guard let key = store.profile?.geminiAPIKey else { return false }
+        return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Budget")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                        Text("See where your everyday spending goes.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("TODAY'S SPENDING")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundColor(.white.opacity(0.75))
+                                Text(currency(todayTotal))
+                                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                            }
+                            Spacer()
+                            Image(systemName: "chart.pie.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white)
+                        }
+                        Text("\(todayRecords.count) record\(todayRecords.count == 1 ? "" : "s") logged today")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.white.opacity(0.82))
+                    }
+                    .padding(22)
+                    .background(
+                        LinearGradient(
+                            colors: [.accentBlue, Color(red: 0.72, green: 0.12, blue: 0.08)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                    .shadow(color: Color.accentBlue.opacity(0.22), radius: 14, y: 8)
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack(spacing: 10) {
+                            Image(systemName: inputMode == .manual ? "pencil.and.list.clipboard" : "doc.viewfinder.fill")
+                                .font(.title3)
+                                .foregroundColor(.primaryOrange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Add a spending record")
+                                    .font(.headline)
+                                Text(inputMode == .manual ? "Log a purchase in a few taps." : "Let Gemini read the bill total for you.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        Picker("Record type", selection: $inputMode) {
+                            ForEach(BudgetInputMode.allCases, id: \.self) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        if inputMode == .manual {
+                            TextField("What did you buy?", text: $recordName)
+                                .textFieldStyle(.roundedBorder)
+                                .focused($focusedField, equals: .name)
+                            HStack {
+                                TextField("Amount", text: $recordAmount)
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(.roundedBorder)
+                                    .focused($focusedField, equals: .amount)
+                                Text("in your currency")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                            Button(action: addManualRecord) {
+                                Label("Add record", systemImage: "plus.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 7)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.primaryOrange)
+                            .disabled(recordName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Double(recordAmount) ?? 0) <= 0)
+                        } else {
+                            Button(action: { showingPicker = true }) {
+                                Label(pickedImage == nil ? "Upload bill photo" : "Replace bill photo", systemImage: "camera.fill")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 7)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.primaryOrange)
+                            .disabled(isAnalyzing)
+
+                            if let pickedImage {
+                                Image(uiImage: pickedImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 170)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                            }
+
+                            if isAnalyzing {
+                                ProgressView("Reading bill with Gemini...")
+                                    .frame(maxWidth: .infinity)
+                            } else if let receiptAnalysis {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Receipt found")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundColor(.secondary)
+                                    HStack {
+                                        Text(receiptAnalysis.name)
+                                            .font(.headline)
+                                        Spacer()
+                                        Text(currency(receiptAnalysis.amount))
+                                            .font(.title3.weight(.bold))
+                                            .foregroundColor(.primaryOrange)
+                                    }
+                                    Button(action: addReceiptRecord) {
+                                        Label("Add to budget", systemImage: "checkmark.circle.fill")
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 7)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.accentBlue)
+                                }
+                                .padding(14)
+                                .background(Color.primaryOrange.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                            } else if !hasGeminiKey {
+                                Text("Add a Gemini API key in Profile to scan bills.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        if !message.isEmpty {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                    }
+                    .padding(18)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 22))
+
+                    HStack {
+                        Label("Recent spending", systemImage: "clock.fill")
+                            .font(.headline)
+                        Spacer()
+                        Text("\(store.budgetRecords.count) total")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    if store.budgetRecords.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "wallet.pass.fill")
+                                .font(.system(size: 38))
+                                .foregroundColor(.primaryOrange)
+                            Text("Your spending story starts here")
+                                .font(.headline)
+                            Text("Add a bill or purchase to see your budget take shape.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 28)
+                        .background(Color.primaryOrange.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(store.budgetRecords) { record in
+                                BudgetRecordRow(record: record, onDelete: { store.deleteBudgetRecord(record) })
+                                if record.id != store.budgetRecords.last?.id {
+                                    Divider().padding(.leading, 52)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .background(Color.appCardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                    }
+                }
+                .padding(20)
+            }
+            .background(Color.appBackground.ignoresSafeArea())
+            .sheet(isPresented: $showingPicker) {
+                ImagePicker(image: $pickedImage)
+                    .onChange(of: pickedImage) { _, newImage in
+                        if let newImage {
+                            Task { await analyzeReceipt(newImage) }
+                        }
+                    }
+            }
+        }
+    }
+
+    private func addManualRecord() {
+        let cleanedName = recordName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedName.isEmpty, let amount = Double(recordAmount), amount > 0 else { return }
+        store.addBudgetRecord(BudgetRecord(name: cleanedName, amount: amount, source: .manual))
+        focusedField = nil
+        recordName = ""
+        recordAmount = ""
+        message = ""
+    }
+
+    private func addReceiptRecord() {
+        guard let receiptAnalysis else { return }
+        store.addBudgetRecord(BudgetRecord(name: receiptAnalysis.name, amount: receiptAnalysis.amount, source: .receipt))
+        pickedImage = nil
+        self.receiptAnalysis = nil
+        message = ""
+    }
+
+    private func analyzeReceipt(_ image: UIImage) async {
+        guard hasGeminiKey, let apiKey = store.profile?.geminiAPIKey else {
+            await MainActor.run { message = "Add a Gemini API key in Profile to scan bills." }
+            return
+        }
+
+        await MainActor.run {
+            isAnalyzing = true
+            receiptAnalysis = nil
+            message = ""
+        }
+        do {
+            let result = try await GeminiNutritionService().analyzeReceipt(image: image, apiKey: apiKey)
+            await MainActor.run {
+                receiptAnalysis = result
+                isAnalyzing = false
+            }
+        } catch {
+            await MainActor.run {
+                isAnalyzing = false
+                message = "Could not read this bill: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func currency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+}
+
+private enum BudgetInputMode: String, CaseIterable {
+    case manual
+    case receipt
+
+    var title: String {
+        switch self {
+        case .manual: return "Manual"
+        case .receipt: return "Bill photo"
+        }
+    }
+}
+
+private enum BudgetField: Hashable {
+    case name
+    case amount
+}
+
+private struct BudgetRecordRow: View {
+    let record: BudgetRecord
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: record.source == .receipt ? "doc.text.viewfinder" : "cart.fill")
+                .foregroundColor(record.source == .receipt ? .accentBlue : .primaryOrange)
+                .frame(width: 36, height: 36)
+                .background((record.source == .receipt ? Color.accentBlue : Color.primaryOrange).opacity(0.12))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(record.name)
+                    .font(.subheadline.weight(.semibold))
+                HStack(spacing: 5) {
+                    Text(record.date, style: .date)
+                    Text("•")
+                    Text(record.source == .receipt ? "Bill photo" : "Manual")
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 5) {
+                Text(currency(record.amount))
+                    .font(.subheadline.weight(.bold))
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash")
+                }
+                .font(.caption)
+            }
+        }
+        .padding(.vertical, 14)
+    }
+
+    private func currency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+}
+
+struct LoansTrackerView: View {
+    @EnvironmentObject var store: AppStore
+    @FocusState private var focusedField: LoanField?
+    @State private var loanName = ""
+    @State private var loanAmount = ""
+    @State private var interestRate = ""
+    @State private var paymentAmount = ""
+    @State private var selectedLoanID: UUID?
+    @State private var showPaymentSheet = false
+    @State private var showEditSheet = false
+    @State private var editingLoanID: UUID?
+    @State private var editLoanName = ""
+    @State private var editLoanAmount = ""
+    @State private var editInterestRate = ""
+    @State private var editPaidAmount = ""
+
+    private var totalTaken: Double {
+        store.loans.reduce(0) { $0 + $1.amountTaken }
+    }
+
+    private var totalPaid: Double {
+        store.loans.reduce(0) { $0 + $1.amountPaid }
+    }
+
+    private var totalRemaining: Double {
+        max(0, totalTaken - totalPaid)
+    }
+
+    private var monthlyDueTotal: Double {
+        store.loans.reduce(0) { $0 + $1.monthlyDue }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Loans")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                        Text("Track borrowed amounts, repayments, balances, and monthly commitments.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack(spacing: 12) {
+                        SummaryPill(title: "Total taken", value: currency(totalTaken), accent: .primaryOrange)
+                        SummaryPill(title: "Total paid", value: currency(totalPaid), accent: .green)
+                    }
+
+                    HStack(spacing: 12) {
+                        SummaryPill(title: "Pending", value: currency(totalRemaining), accent: .accentBlue)
+                        SummaryPill(title: "This month", value: currency(monthlyDueTotal), accent: .purple)
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Portfolio summary")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        HStack(spacing: 12) {
+                            SummaryPill(title: "Total pending", value: currency(totalRemaining), accent: .orange)
+                            SummaryPill(title: "Monthly due", value: currency(monthlyDueTotal), accent: .green)
+                        }
+                    }
+                    .padding(14)
+                    .background(Color.appCardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack(alignment: .center, spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.primaryOrange.opacity(0.12))
+                                    .frame(width: 46, height: 46)
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.primaryOrange)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Add a new loan")
+                                    .font(.headline)
+                                Text("Track the principal and interest in one place.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        VStack(spacing: 12) {
+                            TextField("Loan name", text: $loanName)
+                                .textFieldStyle(.roundedBorder)
+                                .focused($focusedField, equals: .name)
+                            HStack(spacing: 12) {
+                                TextField("Amount taken", text: $loanAmount)
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(.roundedBorder)
+                                    .focused($focusedField, equals: .amount)
+                                TextField("Rate %", text: $interestRate)
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(.roundedBorder)
+                                    .focused($focusedField, equals: .rate)
+                            }
+                            Button(action: addLoan) {
+                                Label("Add loan", systemImage: "plus.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.primaryOrange)
+                            .disabled(loanName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || loanAmount.isEmpty || interestRate.isEmpty)
+                        }
+                    }
+                    .padding(16)
+                    .background(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.primaryOrange.opacity(0.12), Color.appCardBackground]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Your loans")
+                                .font(.headline)
+                            Spacer()
+                            Text("Balance: \(currency(totalRemaining))")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.secondary)
+                        }
+
+                        if store.loans.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "banknote.fill")
+                                    .font(.title)
+                                    .foregroundColor(.primaryOrange)
+                                Text("No loans added yet")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Add your first loan and track every payment as it happens.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18)
+                            .background(Color.appCardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                        } else {
+                            ForEach(store.loans) { loan in
+                                LoanRowView(
+                                    loan: loan,
+                                    onEdit: {
+                                        editingLoanID = loan.id
+                                        editLoanName = loan.name
+                                        editLoanAmount = String(format: "%.2f", loan.amountTaken)
+                                        editInterestRate = String(format: "%.2f", loan.interestRate)
+                                        editPaidAmount = String(format: "%.2f", loan.amountPaid)
+                                        showEditSheet = true
+                                    },
+                                    onDelete: {
+                                        store.deleteLoan(loan)
+                                    },
+                                    onAddPayment: {
+                                        selectedLoanID = loan.id
+                                        paymentAmount = ""
+                                        showPaymentSheet = true
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .background(Color.appBackground.ignoresSafeArea())
+            .sheet(isPresented: $showPaymentSheet) {
+                PaymentSheet(
+                    amountText: $paymentAmount,
+                    onSave: {
+                        guard let selectedLoanID else { return }
+                        if let amount = Double(paymentAmount), amount > 0 {
+                            store.addPayment(to: selectedLoanID, amount: amount)
+                        }
+                        showPaymentSheet = false
+                    }
+                )
+            }
+            .sheet(isPresented: $showEditSheet) {
+                EditLoanSheet(
+                    name: $editLoanName,
+                    amount: $editLoanAmount,
+                    rate: $editInterestRate,
+                    paidAmount: $editPaidAmount,
+                    onSave: {
+                        guard let editingLoanID,
+                              let amount = Double(editLoanAmount),
+                              let rate = Double(editInterestRate),
+                              let paidAmount = Double(editPaidAmount),
+                              amount >= 0, paidAmount >= 0 else { return }
+
+                        let updated = Loan(
+                            id: editingLoanID,
+                            name: editLoanName.trimmingCharacters(in: .whitespacesAndNewlines),
+                            amountTaken: amount,
+                            interestRate: rate,
+                            amountPaid: min(paidAmount, amount)
+                        )
+                        store.updateLoan(updated)
+                        showEditSheet = false
+                    }
+                )
+            }
+        }
+    }
+
+    private func addLoan() {
+        let cleanedName = loanName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedName.isEmpty,
+              let amount = Double(loanAmount),
+              let rate = Double(interestRate),
+              amount >= 0 else { return }
+
+        let loan = Loan(name: cleanedName, amountTaken: amount, interestRate: rate)
+        store.addLoan(loan)
+        focusedField = nil
+        loanName = ""
+        loanAmount = ""
+        interestRate = ""
+    }
+
+    private func currency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+    }
+}
+
+private enum LoanField: Hashable {
+    case name
+    case amount
+    case rate
+}
+
+private struct SummaryPill: View {
+    let title: String
+    let value: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.title3.weight(.bold))
+                .foregroundColor(accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(accent.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct LoanRowView: View {
+    let loan: Loan
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onAddPayment: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(loan.name)
+                        .font(.headline)
+                    Text("Rate: \(String(format: "%.1f", loan.interestRate))%")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                LoanStatusBadge(loan: loan)
+                Button(action: onEdit) {
+                    Image(systemName: "pencil.circle.fill")
+                        .foregroundColor(.primaryOrange)
+                }
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash.fill")
+                }
+            }
+
+            HStack(spacing: 12) {
+                LoanStat(label: "Pending", value: currency(loan.remainingBalance))
+                LoanStat(label: "Monthly due", value: currency(loan.monthlyDue))
+                LoanStat(label: "Paid", value: currency(loan.amountPaid))
+            }
+
+            HStack(spacing: 8) {
+                Button(action: onAddPayment) {
+                    Label("Add payment", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+            }
+        }
+        .padding(16)
+        .background(Color.appCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func currency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+    }
+}
+
+private struct LoanStatusBadge: View {
+    let loan: Loan
+
+    var body: some View {
+        if loan.remainingBalance <= 0 {
+            Text("Paid fully")
+                .font(.caption2.weight(.bold))
+                .foregroundColor(.green)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.green.opacity(0.12))
+                .clipShape(Capsule())
+        } else if loan.monthlyDue > 0 {
+            Text("Active")
+                .font(.caption2.weight(.bold))
+                .foregroundColor(.primaryOrange)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.primaryOrange.opacity(0.12))
+                .clipShape(Capsule())
+        } else {
+            Text("Low due")
+                .font(.caption2.weight(.bold))
+                .foregroundColor(.blue)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.blue.opacity(0.12))
+                .clipShape(Capsule())
+        }
+    }
+}
+
+private struct LoanStat: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct PaymentSheet: View {
+    @Binding var amountText: String
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("Add loan payment")) {
+                    TextField("Payment amount", text: $amountText)
+                        .keyboardType(.decimalPad)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { amountText = "" }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave()
+                        amountText = ""
+                    }
+                    .disabled(Double(amountText) == nil || Double(amountText)! <= 0)
+                }
+            }
+        }
+    }
+}
+
+private struct EditLoanSheet: View {
+    @Binding var name: String
+    @Binding var amount: String
+    @Binding var rate: String
+    @Binding var paidAmount: String
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("Edit loan")) {
+                    TextField("Loan name", text: $name)
+                    TextField("Amount taken", text: $amount)
+                        .keyboardType(.decimalPad)
+                    TextField("Rate %", text: $rate)
+                        .keyboardType(.decimalPad)
+                    TextField("Amount paid", text: $paidAmount)
+                        .keyboardType(.decimalPad)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        name = ""
+                        amount = ""
+                        rate = ""
+                        paidAmount = ""
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || Double(amount) == nil || Double(rate) == nil)
+                }
+            }
+        }
     }
 }
 
@@ -670,7 +1610,6 @@ struct RingView: View {
 
 struct ScanView: View {
     @EnvironmentObject var store: AppStore
-    @Binding var selectedTab: Int
     @State private var showingPicker = false
     @State private var pickedImage: UIImage?
     @State private var analysis: (calories:Int, carbs:Int, protein:Int, fats:Int)? = nil
@@ -792,12 +1731,11 @@ struct ScanView: View {
                                 ScanNutritionTile(title: "Fats", value: "\(a.fats)", unit: "g", color: .purple)
                             }
                             Button(action: {
-                                let entry = FoodEntry(name: name, calories: a.calories, carbsGrams: a.carbs, proteinGrams: a.protein, fatsGrams: a.fats, source: .manual)
+                                let entry = FoodEntry(name: name, calories: a.calories, carbsGrams: a.carbs, proteinGrams: a.protein, fatsGrams: a.fats, source: .photo)
                                 store.addEntry(entry)
                                 pickedImage = nil
                                 analysis = nil
                                 manualMealText = ""
-                                selectedTab = 2
                             }) {
                                 Label("Add to today", systemImage: "plus.circle.fill")
                                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
@@ -910,6 +1848,12 @@ struct ScanNutritionTile: View {
 
 struct TrackerView: View {
     @EnvironmentObject var store: AppStore
+    @State private var editingEntry: FoodEntry?
+    @State private var editedName = ""
+    @State private var editedCalories = ""
+    @State private var editedProtein = ""
+    @State private var editedCarbs = ""
+    @State private var editedFats = ""
 
     var body: some View {
         let totals = dailyTotals(entries: store.entries)
@@ -1007,7 +1951,18 @@ struct TrackerView: View {
                     } else {
                         VStack(spacing: 0) {
                             ForEach(todayEntries) { entry in
-                                TrackerMealRow(entry: entry)
+                                TrackerMealRow(
+                                    entry: entry,
+                                    onEdit: {
+                                        editingEntry = entry
+                                        editedName = entry.name
+                                        editedCalories = String(entry.calories)
+                                        editedProtein = String(entry.proteinGrams)
+                                        editedCarbs = String(entry.carbsGrams)
+                                        editedFats = String(entry.fatsGrams)
+                                    },
+                                    onDelete: { store.deleteEntry(entry) }
+                                )
                                 if entry.id != todayEntries.last?.id {
                                     Divider().padding(.leading, 52)
                                 }
@@ -1019,6 +1974,53 @@ struct TrackerView: View {
                     }
                 }
                 .padding(20)
+            }
+        }
+        .sheet(item: $editingEntry) { entry in
+            NavigationStack {
+                Form {
+                    Section(header: Text("Edit meal")) {
+                        TextField("Meal name", text: $editedName)
+                        TextField("Calories", text: $editedCalories)
+                            .keyboardType(.numberPad)
+                        TextField("Protein (g)", text: $editedProtein)
+                            .keyboardType(.numberPad)
+                        TextField("Carbs (g)", text: $editedCarbs)
+                            .keyboardType(.numberPad)
+                        TextField("Fats (g)", text: $editedFats)
+                            .keyboardType(.numberPad)
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            editingEntry = nil
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            guard let edited = editingEntry,
+                                  !editedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                  let calories = Int(editedCalories),
+                                  let protein = Int(editedProtein),
+                                  let carbs = Int(editedCarbs),
+                                  let fats = Int(editedFats) else { return }
+
+                            let updated = FoodEntry(
+                                id: edited.id,
+                                date: edited.date,
+                                name: editedName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                calories: calories,
+                                carbsGrams: carbs,
+                                proteinGrams: protein,
+                                fatsGrams: fats,
+                                source: edited.source
+                            )
+                            store.updateEntry(updated)
+                            editingEntry = nil
+                        }
+                    }
+                }
             }
         }
     }
@@ -1070,35 +2072,60 @@ struct TrackerMacroRow: View {
 }
 
 struct TrackerMealRow: View {
-    @EnvironmentObject var store: AppStore
     let entry: FoodEntry
+    let onEdit: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "fork.knife")
-                .foregroundColor(.primaryOrange)
-                .frame(width: 36, height: 36)
-                .background(Color.primaryOrange.opacity(0.12))
-                .clipShape(Circle())
-            VStack(alignment: .leading, spacing: 3) {
-                Text(entry.name).font(.subheadline.weight(.semibold))
-                Text(entry.date, style: .time).font(.caption).foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "fork.knife")
+                    .foregroundColor(.primaryOrange)
+                    .frame(width: 36, height: 36)
+                    .background(Color.primaryOrange.opacity(0.12))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(entry.name).font(.subheadline.weight(.semibold))
+                    Text(entry.date, style: .time).font(.caption).foregroundColor(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("\(entry.calories) kcal").font(.subheadline.weight(.bold))
+                    Text("P \(entry.proteinGrams) • C \(entry.carbsGrams) • F \(entry.fatsGrams)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text(entry.source == .manual ? "Typed meal" : "Photo scan")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(entry.source == .manual ? .accentBlue : .primaryOrange)
+                }
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 3) {
-                Text("\(entry.calories) kcal").font(.subheadline.weight(.bold))
-                Text("P \(entry.proteinGrams) • C \(entry.carbsGrams) • F \(entry.fatsGrams)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text(entry.source == .manual ? "Typed meal" : "Photo scan")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(entry.source == .manual ? .accentBlue : .primaryOrange)
+
+            HStack(spacing: 10) {
+                Button(action: onEdit) {
+                    Label("Edit", systemImage: "pencil.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(.primaryOrange)
+
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
         }
         .padding(.vertical, 14)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button {
+                onEdit()
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(.orange)
+
             Button(role: .destructive) {
-                store.deleteEntry(entry)
+                onDelete()
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -1247,6 +2274,10 @@ struct ProfileView: View {
     @State private var targetWarning = ""
     @State private var isExportingNutrition = false
     @State private var nutritionExportDocument = NutritionCSVDocument()
+    @State private var isExportingBudget = false
+    @State private var budgetExportDocument = BudgetCSVDocument()
+    @State private var isExportingLoans = false
+    @State private var loansExportDocument = LoansCSVDocument()
 
     var body: some View {
         GeometryReader { geometry in
@@ -1391,6 +2422,62 @@ struct ProfileView: View {
                             .background(.regularMaterial)
                             .clipShape(RoundedRectangle(cornerRadius: 20))
 
+                            VStack(alignment: .leading, spacing: 14) {
+                                Label("Budget history", systemImage: "chart.pie.fill")
+                                    .font(.headline)
+                                Text("Download your spending records with dates, amounts, and entry sources.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Button(action: {
+                                    budgetExportDocument = BudgetCSVDocument(records: store.budgetRecords)
+                                    isExportingBudget = true
+                                }) {
+                                    Label("Download budget CSV", systemImage: "arrow.down.circle.fill")
+                                        .font(.subheadline.weight(.semibold))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 4)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.primaryOrange)
+                                .disabled(store.budgetRecords.isEmpty)
+                                if store.budgetRecords.isEmpty {
+                                    Text("Add a spending record before downloading your budget history.")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(20)
+                            .background(.regularMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                            VStack(alignment: .leading, spacing: 14) {
+                                Label("Loans history", systemImage: "banknote.fill")
+                                    .font(.headline)
+                                Text("Download loan balances, repayments, and interest details in one file.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Button(action: {
+                                    loansExportDocument = LoansCSVDocument(loans: store.loans)
+                                    isExportingLoans = true
+                                }) {
+                                    Label("Download loans CSV", systemImage: "arrow.down.circle.fill")
+                                        .font(.subheadline.weight(.semibold))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 4)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.accentBlue)
+                                .disabled(store.loans.isEmpty)
+                                if store.loans.isEmpty {
+                                    Text("Add a loan before downloading your loan history.")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(20)
+                            .background(.regularMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+
                             Button("Log out") { store.logout() }
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(.red)
@@ -1407,6 +2494,18 @@ struct ProfileView: View {
             document: nutritionExportDocument,
             contentType: .commaSeparatedText,
             defaultFilename: "btracker-nutrition-history"
+        ) { _ in }
+        .fileExporter(
+            isPresented: $isExportingBudget,
+            document: budgetExportDocument,
+            contentType: .commaSeparatedText,
+            defaultFilename: "btracker-budget-history"
+        ) { _ in }
+        .fileExporter(
+            isPresented: $isExportingLoans,
+            document: loansExportDocument,
+            contentType: .commaSeparatedText,
+            defaultFilename: "btracker-loans-history"
         ) { _ in }
     }
 
@@ -1464,6 +2563,8 @@ struct NutritionCSVDocument: FileDocument {
 
     private var contents: String
 
+    var data: Data { Data(contents.utf8) }
+
     init() {
         contents = "Date,Meal,Calories (kcal),Protein (g),Carbs (g),Fat (g)\n"
     }
@@ -1481,6 +2582,83 @@ struct NutritionCSVDocument: FileDocument {
             ].joined(separator: ",")
         }
         contents = (["Date,Meal,Calories (kcal),Protein (g),Carbs (g),Fat (g)"] + rows).joined(separator: "\n") + "\n"
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        contents = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? ""
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(contents.utf8))
+    }
+
+    private static func escape(_ value: String) -> String {
+        let escaped = value.replacingOccurrences(of: "\"", with: "\"\"")
+        return "\"\(escaped)\""
+    }
+}
+
+struct BudgetCSVDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.commaSeparatedText] }
+
+    private var contents: String
+
+    var data: Data { Data(contents.utf8) }
+
+    init() {
+        contents = "Date,Name,Amount,Source\n"
+    }
+
+    init(records: [BudgetRecord]) {
+        let formatter = ISO8601DateFormatter()
+        let rows = records.sorted { $0.date < $1.date }.map { record in
+            [
+                formatter.string(from: record.date),
+                Self.escape(record.name),
+                String(format: "%.2f", record.amount),
+                record.source == .receipt ? "Receipt photo" : "Manual"
+            ].joined(separator: ",")
+        }
+        contents = (["Date,Name,Amount,Source"] + rows).joined(separator: "\n") + "\n"
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        contents = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? ""
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(contents.utf8))
+    }
+
+    private static func escape(_ value: String) -> String {
+        let escaped = value.replacingOccurrences(of: "\"", with: "\"\"")
+        return "\"\(escaped)\""
+    }
+}
+
+struct LoansCSVDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.commaSeparatedText] }
+
+    private var contents: String
+
+    var data: Data { Data(contents.utf8) }
+
+    init() {
+        contents = "Name,Amount Taken,Interest Rate (%),Amount Paid,Remaining Balance,Monthly Due\n"
+    }
+
+    init(loans: [Loan]) {
+        let rows = loans.map { loan in
+            [
+                Self.escape(loan.name),
+                String(format: "%.2f", loan.amountTaken),
+                String(format: "%.2f", loan.interestRate),
+                String(format: "%.2f", loan.amountPaid),
+                String(format: "%.2f", loan.remainingBalance),
+                String(format: "%.2f", loan.monthlyDue)
+            ].joined(separator: ",")
+        }
+        contents = (["Name,Amount Taken,Interest Rate (%),Amount Paid,Remaining Balance,Monthly Due"] + rows).joined(separator: "\n") + "\n"
     }
 
     init(configuration: ReadConfiguration) throws {
@@ -1618,11 +2796,16 @@ struct ProfileTargetBadge: View {
 
 struct SettingsView: View {
     @EnvironmentObject var store: AppStore
+    @AppStorage("waterIntakeML") private var waterIntakeML = 0
     @AppStorage("waterNotificationsEnabled") private var notificationsEnabled = true
     @AppStorage("waterGoalML") private var waterGoalML = 3000
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @State private var geminiAPIKey = ""
     @State private var saved = false
+    @State private var reportMessage = ""
+    @State private var mailReport: MailReport?
+    @State private var isPreparingReport = false
+    private let pedometer = CMPedometer()
 
     var body: some View {
         GeometryReader { geometry in
@@ -1687,6 +2870,29 @@ struct SettingsView: View {
                             }
                         }
                         .padding(20).background(.regularMaterial).clipShape(RoundedRectangle(cornerRadius: 20))
+                        VStack(alignment: .leading, spacing: 14) {
+                            Label("Your report", systemImage: "envelope.badge.fill").font(.headline)
+                            Text("Send nutrition, budget, loan, water, and step details to your registered email.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Button(action: {
+                                Task { await sendMonthlyReport() }
+                            }) {
+                                Label("Send details to me", systemImage: "paperplane.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.accentBlue)
+                            .disabled(isPreparingReport || store.profile?.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                            if !reportMessage.isEmpty {
+                                Text(reportMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(20).background(.regularMaterial).clipShape(RoundedRectangle(cornerRadius: 20))
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -1697,6 +2903,14 @@ struct SettingsView: View {
             geminiAPIKey = store.profile?.geminiAPIKey ?? ""
             if waterGoalML < 1 { waterGoalML = 3000 }
         }
+        .sheet(item: $mailReport) { report in
+            MailComposeView(
+                recipient: report.recipient,
+                subject: report.subject,
+                body: report.body,
+                attachments: report.attachments
+            )
+        }
     }
 
     private func saveSettings() {
@@ -1705,5 +2919,138 @@ struct SettingsView: View {
         profile.geminiAPIKey = key.isEmpty ? nil : key
         store.saveProfile(profile)
         saved = true
+    }
+
+    private func sendMonthlyReport() async {
+                guard !isPreparingReport else { return }
+        guard let profile = store.profile,
+              !profile.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            await MainActor.run { reportMessage = "Add an email address to your profile first." }
+            return
+        }
+        guard MFMailComposeViewController.canSendMail() else {
+            await MainActor.run { reportMessage = "Mail is not configured on this device. Set up Apple Mail and try again." }
+            return
+        }
+
+        await MainActor.run {
+            isPreparingReport = true
+            reportMessage = "Preparing your report..."
+        }
+        let calendar = Calendar.current
+        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
+        let monthEntries = store.entries.filter { $0.date >= monthStart }
+        let monthBudget = store.budgetRecords.filter { $0.date >= monthStart }
+        let steps = await monthlySteps(from: monthStart, to: Date())
+        let budgetTotal = monthBudget.reduce(0) { $0 + $1.amount }
+        let nutritionCalories = monthEntries.reduce(0) { $0 + $1.calories }
+        let nutritionProtein = monthEntries.reduce(0) { $0 + $1.proteinGrams }
+        let nutritionCarbs = monthEntries.reduce(0) { $0 + $1.carbsGrams }
+        let nutritionFats = monthEntries.reduce(0) { $0 + $1.fatsGrams }
+        let averageWeeklySpend = budgetTotal / max(1, Double(calendar.dateComponents([.weekOfYear], from: monthStart, to: Date()).weekOfYear ?? 1))
+        let monthName = monthStart.formatted(.dateTime.month(.wide).year())
+        let dateLabel = Date().formatted(.dateTime.year().month().day())
+        let subject = "MAssist - Weekly report - \(dateLabel)"
+
+        let prompt = """
+        Write a concise, friendly personal health and finance report for \(monthName). Use plain text with short headings and bullet points. Do not invent data. Mention average weekly spending, total monthly spending, nutrition totals, water intake currently recorded, loan totals, and steps. End with one practical observation. Here is the data:
+        Average weekly spending: \(currency(averageWeeklySpend))
+        Total monthly spending: \(currency(budgetTotal))
+        Nutrition entries: \(monthEntries.count), calories: \(nutritionCalories) kcal, protein: \(nutritionProtein) g, carbs: \(nutritionCarbs) g, fats: \(nutritionFats) g
+        Water currently recorded: \(String(format: "%.1f", Double(waterIntakeML) / 1000.0)) L
+        Steps this month: \(steps)
+        Loans total taken: \(currency(store.loans.reduce(0) { $0 + $1.amountTaken }))
+        Loans total paid: \(currency(store.loans.reduce(0) { $0 + $1.amountPaid }))
+        """
+
+        let summary: String
+        if let key = profile.geminiAPIKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            summary = (try? await GeminiNutritionService().generateReportSummary(prompt: prompt, apiKey: key)) ?? localReportSummary(monthName: monthName, averageWeeklySpend: averageWeeklySpend, budgetTotal: budgetTotal, calories: nutritionCalories, protein: nutritionProtein, carbs: nutritionCarbs, fats: nutritionFats, steps: steps)
+        } else {
+            summary = localReportSummary(monthName: monthName, averageWeeklySpend: averageWeeklySpend, budgetTotal: budgetTotal, calories: nutritionCalories, protein: nutritionProtein, carbs: nutritionCarbs, fats: nutritionFats, steps: steps)
+        }
+
+        let nutritionCSV = NutritionCSVDocument(entries: store.entries)
+        let budgetCSV = BudgetCSVDocument(records: store.budgetRecords)
+        let loansCSV = LoansCSVDocument(loans: store.loans)
+        await MainActor.run {
+            mailReport = MailReport(
+                recipient: profile.email,
+                subject: subject,
+                body: summary,
+                attachments: [
+                    MailAttachment(data: nutritionCSV.data, filename: "btracker-nutrition-history.csv"),
+                    MailAttachment(data: budgetCSV.data, filename: "btracker-budget-history.csv"),
+                    MailAttachment(data: loansCSV.data, filename: "btracker-loans-history.csv")
+                ]
+            )
+            isPreparingReport = false
+            reportMessage = ""
+        }
+    }
+
+    private func monthlySteps(from start: Date, to end: Date) async -> Int {
+        guard CMPedometer.isStepCountingAvailable() else { return 0 }
+        return await withCheckedContinuation { continuation in
+            pedometer.queryPedometerData(from: start, to: end) { data, _ in
+                continuation.resume(returning: data?.numberOfSteps.intValue ?? 0)
+            }
+        }
+    }
+
+    private func localReportSummary(monthName: String, averageWeeklySpend: Double, budgetTotal: Double, calories: Int, protein: Int, carbs: Int, fats: Int, steps: Int) -> String {
+        "MAssist report - \(monthName)\n\nSpending\n• Monthly spending: \(currency(budgetTotal))\n• Average weekly spending: \(currency(averageWeeklySpend))\n\nNutrition\n• Calories: \(calories) kcal\n• Protein: \(protein) g | Carbs: \(carbs) g | Fats: \(fats) g\n• Water currently recorded: \(String(format: "%.1f", Double(waterIntakeML) / 1000.0)) L\n\nActivity\n• Steps this month: \(steps)\n\nLoan totals are included in the attached CSV."
+    }
+
+    private func currency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+}
+
+private struct MailAttachment {
+    let data: Data
+    let filename: String
+}
+
+private struct MailReport: Identifiable {
+    let id = UUID()
+    let recipient: String
+    let subject: String
+    let body: String
+    let attachments: [MailAttachment]
+}
+
+private struct MailComposeView: UIViewControllerRepresentable {
+    let recipient: String
+    let subject: String
+    let body: String
+    let attachments: [MailAttachment]
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIViewController(context: Context) -> MFMailComposeViewController {
+        let controller = MFMailComposeViewController()
+        controller.mailComposeDelegate = context.coordinator
+        controller.setToRecipients([recipient])
+        controller.setSubject(subject)
+        controller.setMessageBody(body, isHTML: false)
+        for attachment in attachments {
+            controller.addAttachmentData(attachment.data, mimeType: "text/csv", fileName: attachment.filename)
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: MFMailComposeViewController, context: Context) {}
+
+    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
+            controller.dismiss(animated: true)
+        }
     }
 }

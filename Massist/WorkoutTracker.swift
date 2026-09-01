@@ -59,8 +59,9 @@ final class WorkoutTracker: NSObject, ObservableObject {
 
         locationManager.distanceFilter = 5
 
-        locationManager.allowsBackgroundLocationUpdates = true
-
+        // Keep workout tracking active while the app is foregrounded.
+        // Enabling background location updates requires the app to be configured
+        // for background location support in the project capabilities and plist.
         authorizationStatus = locationManager.authorizationStatus
     }
 

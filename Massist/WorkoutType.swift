@@ -12,7 +12,7 @@ enum WorkoutType: String, CaseIterable, Identifiable, Codable {
         case .walking:
             return "figure.walk"
         case .jogging:
-            return "figure.jogging"
+            return "figure.run"
         case .running:
             return "figure.run"
         }

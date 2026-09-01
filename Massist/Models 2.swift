@@ -60,3 +60,49 @@ struct FoodEntry: Codable, Identifiable, Equatable {
         self.source = source
     }
 }
+
+struct Loan: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var amountTaken: Double
+    var interestRate: Double
+    var amountPaid: Double
+
+    var remainingBalance: Double {
+        max(0, amountTaken - amountPaid)
+    }
+
+    var monthlyDue: Double {
+        let monthlyRate = (interestRate / 100.0) / 12.0
+        return max(0, remainingBalance) * monthlyRate
+    }
+
+    init(id: UUID = UUID(), name: String, amountTaken: Double, interestRate: Double, amountPaid: Double = 0) {
+        self.id = id
+        self.name = name
+        self.amountTaken = max(0, amountTaken)
+        self.interestRate = max(0, interestRate)
+        self.amountPaid = max(0, amountPaid)
+    }
+}
+
+enum BudgetRecordSource: String, Codable {
+    case receipt
+    case manual
+}
+
+struct BudgetRecord: Codable, Identifiable, Equatable {
+    let id: UUID
+    var date: Date
+    var name: String
+    var amount: Double
+    var source: BudgetRecordSource
+
+    init(id: UUID = UUID(), date: Date = Date(), name: String, amount: Double, source: BudgetRecordSource = .manual) {
+        self.id = id
+        self.date = date
+        self.name = name
+        self.amount = max(0, amount)
+        self.source = source
+    }
+}
