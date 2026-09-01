@@ -14,7 +14,7 @@ final class CoreDataStack {
 
     private init(inMemory: Bool = false) {
         let model = Self.createModel()
-        container = NSPersistentContainer(name: "BtrackerModel", managedObjectModel: model)
+        container = NSPersistentContainer(name: "MAssistModel", managedObjectModel: model)
         if inMemory {
             let desc = NSPersistentStoreDescription()
             desc.type = NSInMemoryStoreType

@@ -80,7 +80,7 @@ struct LoginView: View {
                             Image(systemName: "leaf.fill")
                                 .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.primaryOrange)
-                            Text("Welcome to Btracker")
+                            Text("Welcome to MAssist")
                                 .font(.system(size: min(34, max(28, geometry.size.width * 0.085)), weight: .bold, design: .rounded))
                             Text("Create your profile and make every meal count.")
                                 .font(.subheadline)
@@ -244,7 +244,7 @@ struct OnboardingView: View {
                             profile.goal = goal
                             store.saveProfile(profile)
                         }) {
-                            Label("Continue to Btracker", systemImage: "arrow.right.circle.fill")
+                            Label("Continue to MAssist", systemImage: "arrow.right.circle.fill")
                                 .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
                         }
                         .buttonStyle(.borderedProminent)
@@ -1610,6 +1610,7 @@ struct RingView: View {
 
 struct ScanView: View {
     @EnvironmentObject var store: AppStore
+    @FocusState private var focusedField: ScanField?
     @State private var showingPicker = false
     @State private var pickedImage: UIImage?
     @State private var analysis: (calories:Int, carbs:Int, protein:Int, fats:Int)? = nil
@@ -1673,6 +1674,7 @@ struct ScanView: View {
                             .lineLimit(1...5)
                             .frame(minHeight: 80)
                             .textFieldStyle(.roundedBorder)
+                            .focused($focusedField, equals: .manualMeal)
                             .disabled(!hasGeminiKey || isAnalyzing)
                             .submitLabel(.done)
                             .onSubmit {
@@ -1733,6 +1735,7 @@ struct ScanView: View {
                             Button(action: {
                                 let entry = FoodEntry(name: name, calories: a.calories, carbsGrams: a.carbs, proteinGrams: a.protein, fatsGrams: a.fats, source: .photo)
                                 store.addEntry(entry)
+                                focusedField = nil
                                 pickedImage = nil
                                 analysis = nil
                                 manualMealText = ""
@@ -1788,6 +1791,8 @@ struct ScanView: View {
         let input = manualMealText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return }
 
+        focusedField = nil
+
         guard let profile = store.profile else {
             await MainActor.run {
                 scanMessage = "Please create or restore your profile before analyzing meals."
@@ -1823,6 +1828,10 @@ struct ScanView: View {
             }
         }
     }
+}
+
+private enum ScanField: Hashable {
+    case manualMeal
 }
 
 struct ScanNutritionTile: View {
@@ -2493,19 +2502,19 @@ struct ProfileView: View {
             isPresented: $isExportingNutrition,
             document: nutritionExportDocument,
             contentType: .commaSeparatedText,
-            defaultFilename: "btracker-nutrition-history"
+            defaultFilename: "massist-nutrition-history"
         ) { _ in }
         .fileExporter(
             isPresented: $isExportingBudget,
             document: budgetExportDocument,
             contentType: .commaSeparatedText,
-            defaultFilename: "btracker-budget-history"
+            defaultFilename: "massist-budget-history"
         ) { _ in }
         .fileExporter(
             isPresented: $isExportingLoans,
             document: loansExportDocument,
             contentType: .commaSeparatedText,
-            defaultFilename: "btracker-loans-history"
+            defaultFilename: "massist-loans-history"
         ) { _ in }
     }
 
@@ -2816,7 +2825,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         VStack(alignment: .leading, spacing: 5) {
                             Text("Settings").font(.system(size: min(32, max(24, geometry.size.width * 0.08)), weight: .bold, design: .rounded))
-                            Text("Make Btracker fit your workday.").font(.subheadline).foregroundColor(.secondary)
+                            Text("Make MAssist fit your workday.").font(.subheadline).foregroundColor(.secondary)
                         }
                         VStack(alignment: .leading, spacing: 16) {
                             Label("Appearance", systemImage: "paintbrush.fill").font(.headline)
@@ -2979,9 +2988,9 @@ struct SettingsView: View {
                 subject: subject,
                 body: summary,
                 attachments: [
-                    MailAttachment(data: nutritionCSV.data, filename: "btracker-nutrition-history.csv"),
-                    MailAttachment(data: budgetCSV.data, filename: "btracker-budget-history.csv"),
-                    MailAttachment(data: loansCSV.data, filename: "btracker-loans-history.csv")
+                    MailAttachment(data: nutritionCSV.data, filename: "massist-nutrition-history.csv"),
+                    MailAttachment(data: budgetCSV.data, filename: "massist-budget-history.csv"),
+                    MailAttachment(data: loansCSV.data, filename: "massist-loans-history.csv")
                 ]
             )
             isPreparingReport = false

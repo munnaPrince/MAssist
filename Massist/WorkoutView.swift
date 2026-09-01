@@ -55,7 +55,7 @@ struct WorkoutView: View {
             } message: {
 
                 Text(
-                    "Btracker needs your location to track your walking, jogging, or running route."
+                    "MAssist needs your location to track your walking, jogging, or running route."
                 )
             }
             .confirmationDialog(
