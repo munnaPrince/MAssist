@@ -34,7 +34,7 @@ struct WorkoutMapView: View {
         .onAppear {
 
             cameraPosition = .userLocation(
-                followsHeading: true,
+                followsHeading: false,
                 fallback: .automatic
             )
         }

@@ -1132,23 +1132,14 @@ struct LoansTrackerView: View {
                             .foregroundColor(.secondary)
                     }
 
-                    HStack(spacing: 12) {
-                        SummaryPill(title: "Total taken", value: currency(totalTaken), accent: .primaryOrange)
-                        SummaryPill(title: "Total paid", value: currency(totalPaid), accent: .green)
-                    }
-
-                    HStack(spacing: 12) {
-                        SummaryPill(title: "Pending", value: currency(totalRemaining), accent: .accentBlue)
-                        SummaryPill(title: "This month", value: currency(monthlyDueTotal), accent: .purple)
-                    }
-
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Portfolio summary")
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(.secondary)
                         HStack(spacing: 12) {
-                            SummaryPill(title: "Total pending", value: currency(totalRemaining), accent: .orange)
-                            SummaryPill(title: "Monthly due", value: currency(monthlyDueTotal), accent: .green)
+                            SummaryPill(title: "Total Taken", value: currency(totalTaken), accent: .primaryOrange)
+                            SummaryPill(title: "Total paid", value: currency(totalPaid), accent: .green)
+                            SummaryPill(title: "Amount pending", value: currency(totalRemaining), accent: .accentBlue)
                         }
                     }
                     .padding(14)

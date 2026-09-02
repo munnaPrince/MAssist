@@ -82,11 +82,11 @@ xcodebuild -project "Massist.xcodeproj" \
 MAssist requests the following permissions when the related features are used:
 
 - Motion access for daily and workout step counts.
-- Location access while using the app for workout routes and distance.
+- Always location access for workout routes and distance while the app is locked.
 - Photo library access for meal and receipt images.
 - Notifications for hydration reminders.
 
-Workout location tracking is configured for foreground use. The app does not require background location updates to build or run.
+Workout location tracking supports background updates while a workout is active. The app displays the system background-location indicator while tracking.
 
 ## Data and privacy
 

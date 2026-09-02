@@ -59,16 +59,17 @@ final class WorkoutTracker: NSObject, ObservableObject {
 
         locationManager.distanceFilter = 5
 
-        // Keep workout tracking active while the app is foregrounded.
-        // Enabling background location updates requires the app to be configured
-        // for background location support in the project capabilities and plist.
+        // Background tracking requires the Location background mode in the target.
+        locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.showsBackgroundLocationIndicator = true
+
         authorizationStatus = locationManager.authorizationStatus
     }
 
     // MARK: - Permission
 
     func requestLocationPermission() {
-        locationManager.requestWhenInUseAuthorization()
+        locationManager.requestAlwaysAuthorization()
     }
 
     // MARK: - Start
@@ -264,7 +265,11 @@ final class WorkoutTracker: NSObject, ObservableObject {
             return
         }
 
-        guard location.horizontalAccuracy <= 50 else {
+        guard location.horizontalAccuracy <= 25 else {
+            return
+        }
+
+        guard Date().timeIntervalSince(location.timestamp) <= 10 else {
             return
         }
 
@@ -275,6 +280,16 @@ final class WorkoutTracker: NSObject, ObservableObject {
             // Ignore unrealistic GPS jumps.
             guard distance < 100 else {
                 return
+            }
+
+            let timeInterval = location.timestamp.timeIntervalSince(previous.timestamp)
+
+            if timeInterval > 0 {
+                let impliedSpeed = distance / timeInterval
+
+                guard impliedSpeed <= 12 else {
+                    return
+                }
             }
 
             if distance > 1 {
