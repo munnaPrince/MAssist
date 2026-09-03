@@ -893,29 +893,39 @@ struct HomeMetricCard: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
+                HStack(spacing: 8) {
                     Image(systemName: icon)
                         .font(.subheadline.weight(.bold))
                         .foregroundColor(accent)
                         .frame(width: 26, height: 26)
                         .background(accent.opacity(0.12))
                         .clipShape(Circle())
-                    Spacer()
                     Text(title)
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(value).font(.title2.weight(.bold))
-                        Text(unit).font(.caption.weight(.semibold)).foregroundColor(.secondary)
+                        Text(value)
+                            .font(.title2.weight(.bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.65)
+                            .allowsTightening(true)
+                        Text(unit)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
                     }
                     Text(subtitle).font(.caption2).foregroundColor(.secondary)
                 }
+                .layoutPriority(1)
             }
 
             MiniProgressRing(value: progress, accent: accent)
+                .frame(width: 58, height: 58)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1618,7 +1628,7 @@ private struct LoanRowView: View {
             }
 
             HStack(spacing: 12) {
-                LoanStat(label: "Pending", value: currency(loan.remainingBalance))
+                LoanStat(label: "Taken", value: currency(loan.amountTaken))
                 LoanStat(label: "Monthly due", value: currency(loan.monthlyDue))
                 LoanStat(label: "Paid", value: currency(loan.amountPaid))
             }
