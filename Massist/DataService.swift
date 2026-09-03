@@ -125,6 +125,36 @@ struct GeminiNutritionService {
         let carbs: Int
         let protein: Int
         let fats: Int
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            name = try container.decodeIfPresent(String.self, forKey: .name)
+            calories = try Self.decodeInt(container, key: .calories)
+            carbs = try Self.decodeInt(container, key: .carbs)
+            protein = try Self.decodeInt(container, key: .protein)
+            fats = try Self.decodeInt(container, key: .fats)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case name, calories, carbs, protein, fats
+        }
+
+        private static func decodeInt<T: CodingKey>(_ container: KeyedDecodingContainer<T>, key: T) throws -> Int {
+            if let value = try? container.decode(Int.self, forKey: key) {
+                return value
+            }
+            if let value = try? container.decode(Double.self, forKey: key) {
+                return Int(value.rounded())
+            }
+            if let value = try? container.decode(String.self, forKey: key),
+               let number = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return Int(number.rounded())
+            }
+            throw DecodingError.typeMismatch(
+                Int.self,
+                DecodingError.Context(codingPath: container.codingPath, debugDescription: "Expected a number for nutrition value")
+            )
+        }
     }
 
     private struct Expense: Decodable {
@@ -240,9 +270,21 @@ struct GeminiNutritionService {
         }
         let decodedResponse = try JSONDecoder().decode(Response.self, from: data)
         guard let text = decodedResponse.candidates?.first?.content.parts.first?.text else { throw GeminiNutritionError.invalidResponse }
-        let cleanText = text.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanText = Self.jsonObjectText(from: text)
         let nutrition = try JSONDecoder().decode(Nutrition.self, from: Data(cleanText.utf8))
         return (nutrition.name ?? "Logged Meal", max(0, nutrition.calories), max(0, nutrition.carbs), max(0, nutrition.protein), max(0, nutrition.fats))
+    }
+
+    private static func jsonObjectText(from text: String) -> String {
+        let withoutMarkdown = text
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let start = withoutMarkdown.firstIndex(of: "{"),
+              let end = withoutMarkdown.lastIndex(of: "}") else {
+            return withoutMarkdown
+        }
+        return String(withoutMarkdown[start...end])
     }
 
     func generateReportSummary(prompt: String, apiKey: String) async throws -> String {

@@ -417,8 +417,9 @@ struct HomeView: View {
     private let pedometer = CMPedometer()
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
+        NavigationStack {
+            GeometryReader { geometry in
+                ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if let profile = store.profile {
                         let targets = MacroCalculator.targets(for: profile)
@@ -473,6 +474,41 @@ struct HomeView: View {
                         .padding(14)
                         .background(Color.primaryOrange.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                        NavigationLink {
+                            NutritionAskView()
+                        } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "sparkles")
+                                    .font(.title2.weight(.semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.white.opacity(0.18))
+                                    .clipShape(Circle())
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Ask")
+                                        .font(.headline.weight(.bold))
+                                    Text("Get nutrition guidance for your day")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.82))
+                                }
+
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.headline.weight(.bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(16)
+                            .background(
+                                LinearGradient(
+                                    colors: [.accentBlue, .primaryOrange],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                        }
 
                         VStack(alignment: .leading, spacing: 14) {
                             HStack {
@@ -531,12 +567,13 @@ struct HomeView: View {
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
-        }
-        .background(Color.appBackground.ignoresSafeArea())
-        .task {
-            loadTodaySteps()
-            await loadDailyMotivation()
+            .background(Color.appBackground.ignoresSafeArea())
+            .task {
+                loadTodaySteps()
+                await loadDailyMotivation()
+            }
         }
     }
 
@@ -636,6 +673,211 @@ struct HomeView: View {
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 2
         return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+}
+
+struct NutritionAskView: View {
+    @EnvironmentObject var store: AppStore
+    @AppStorage("waterIntakeML") private var waterIntakeML = 0
+    @State private var question = ""
+    @State private var answer = ""
+    @State private var errorMessage = ""
+    @State private var isAsking = false
+    @FocusState private var questionFocused: Bool
+
+    var body: some View {
+        ZStack {
+            Color.appBackground
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Ask your nutritionist")
+                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                            Spacer()
+                            Image(systemName: "sparkles")
+                                .font(.title2.weight(.bold))
+                                .foregroundColor(.white)
+                                .frame(width: 48, height: 48)
+                                .background(Color.accentBlue)
+                                .clipShape(Circle())
+                        }
+                        Text("Your answer is shaped around your profile and today's progress.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Label("What would you like to know?", systemImage: "bubble.left.and.text.bubble.right.fill")
+                            .font(.headline)
+
+                        TextField("e.g. What should I eat for more protein today?", text: $question, axis: .vertical)
+                            .lineLimit(3...6)
+                            .focused($questionFocused)
+                            .textFieldStyle(.plain)
+                            .padding(14)
+                            .background(Color.appCardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.accentBlue.opacity(question.isEmpty ? 0.16 : 0.55), lineWidth: 1.5)
+                            )
+
+                        Button {
+                            Task { await askQuestion() }
+                        } label: {
+                            HStack {
+                                Image(systemName: isAsking ? "hourglass" : "paperplane.fill")
+                                Text(isAsking ? "Thinking..." : "Ask Gemini")
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.accentBlue)
+                        .disabled(isAsking || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.profile?.geminiAPIKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false)
+
+                        if store.profile?.geminiAPIKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                            Label("Add your Gemini API key in Profile to ask a question.", systemImage: "key.fill")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(20)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 22))
+
+                    if isAsking {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                            Text("Reviewing your nutrition context...")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 12)
+                    }
+
+                    if !answer.isEmpty {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack {
+                                Label("Your answer", systemImage: "checkmark.seal.fill")
+                                    .font(.headline)
+                                    .foregroundColor(.accentBlue)
+                                Spacer()
+                                Text("GEMINI")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundColor(.secondary)
+                            }
+                            Text(answer)
+                                .font(.body)
+                                .lineSpacing(4)
+                        }
+                        .padding(20)
+                        .background(Color.accentBlue.opacity(0.09))
+                        .clipShape(RoundedRectangle(cornerRadius: 22))
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
+                    if !errorMessage.isEmpty {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.orange.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                }
+                .padding(20)
+            }
+        }
+        .navigationTitle("Ask")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func askQuestion() async {
+        guard let profile = store.profile,
+              let apiKey = profile.geminiAPIKey,
+              !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = GeminiNutritionError.invalidAPIKey.localizedDescription
+            return
+        }
+
+        let totals = dailyTotals(entries: store.entries)
+        let trimmedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        let renderedPrompt = nutritionPrompt(
+            profile: profile,
+            totals: totals,
+            water: waterIntakeML,
+            question: trimmedQuestion
+        )
+
+        await MainActor.run {
+            isAsking = true
+            answer = ""
+            errorMessage = ""
+            questionFocused = false
+        }
+
+        do {
+            let response = try await GeminiNutritionService().generateReportSummary(prompt: renderedPrompt, apiKey: apiKey)
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    answer = response
+                }
+                isAsking = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isAsking = false
+            }
+        }
+    }
+
+    private func nutritionPrompt(
+        profile: UserProfile,
+        totals: (calories: Int, protein: Int, carbs: Int, fats: Int),
+        water: Int,
+        question: String
+    ) -> String {
+        let template = (Bundle.main.url(forResource: "prompt", withExtension: "txt"))
+            .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+            ?? "You are a professional nutritionist. Give concise, practical, non-diagnostic nutrition guidance."
+
+        return template
+            .replacingOccurrences(of: "{{age}}", with: String(profile.age ?? 0))
+            .replacingOccurrences(of: "{{height}}", with: String(format: "%.0f", profile.heightCm ?? 0))
+            .replacingOccurrences(of: "{{weight}}", with: String(format: "%.1f", profile.weightKg ?? 0))
+            .replacingOccurrences(of: "{{goal}}", with: goalLabel(for: profile.goal))
+            .replacingOccurrences(of: "{{calories}}", with: String(totals.calories))
+            .replacingOccurrences(of: "{{protein}}", with: String(totals.protein))
+            .replacingOccurrences(of: "{{fat}}", with: String(totals.fats))
+            .replacingOccurrences(of: "{{water}}", with: String(water))
+            + "\n\nUser's question:\n\(question)\n\nAnswer the user's question using the context above. Keep the required response structure and stay within 120-150 words."
+    }
+
+    private func goalLabel(for goal: GoalType?) -> String {
+        switch goal {
+        case .muscleGain: return "Muscle Gain"
+        case .weightLoss: return "Muscle Loss / Weight Loss"
+        default: return "Weight Maintenance"
+        }
+    }
+
+    private func dailyTotals(entries: [FoodEntry]) -> (calories: Int, protein: Int, carbs: Int, fats: Int) {
+        let today = Calendar.current.startOfDay(for: Date())
+        let todayEntries = entries.filter { Calendar.current.startOfDay(for: $0.date) == today }
+        return (
+            todayEntries.reduce(0) { $0 + $1.calories },
+            todayEntries.reduce(0) { $0 + $1.proteinGrams },
+            todayEntries.reduce(0) { $0 + $1.carbsGrams },
+            todayEntries.reduce(0) { $0 + $1.fatsGrams }
+        )
     }
 }
 
@@ -758,6 +1000,7 @@ struct BudgetTrackerView: View {
     @State private var recordAmount = ""
     @State private var isAnalyzing = false
     @State private var message = ""
+    @State private var recordDate = Date()
 
     private var todayRecords: [BudgetRecord] {
         let today = Calendar.current.startOfDay(for: Date())
@@ -912,6 +1155,8 @@ struct BudgetTrackerView: View {
                             }
                         }
 
+                        DatePicker("Record date", selection: $recordDate, displayedComponents: .date)
+
                         if !message.isEmpty {
                             Text(message)
                                 .font(.caption)
@@ -978,18 +1223,20 @@ struct BudgetTrackerView: View {
     private func addManualRecord() {
         let cleanedName = recordName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedName.isEmpty, let amount = Double(recordAmount), amount > 0 else { return }
-        store.addBudgetRecord(BudgetRecord(name: cleanedName, amount: amount, source: .manual))
+        store.addBudgetRecord(BudgetRecord(date: recordDate, name: cleanedName, amount: amount, source: .manual))
         focusedField = nil
         recordName = ""
         recordAmount = ""
+        recordDate = Date()
         message = ""
     }
 
     private func addReceiptRecord() {
         guard let receiptAnalysis else { return }
-        store.addBudgetRecord(BudgetRecord(name: receiptAnalysis.name, amount: receiptAnalysis.amount, source: .receipt))
+        store.addBudgetRecord(BudgetRecord(date: recordDate, name: receiptAnalysis.name, amount: receiptAnalysis.amount, source: .receipt))
         pickedImage = nil
         self.receiptAnalysis = nil
+        recordDate = Date()
         message = ""
     }
 
@@ -1136,10 +1383,11 @@ struct LoansTrackerView: View {
                         Text("Portfolio summary")
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(.secondary)
-                        HStack(spacing: 12) {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                             SummaryPill(title: "Total Taken", value: currency(totalTaken), accent: .primaryOrange)
                             SummaryPill(title: "Total paid", value: currency(totalPaid), accent: .green)
                             SummaryPill(title: "Amount pending", value: currency(totalRemaining), accent: .accentBlue)
+                            SummaryPill(title: "Monthly due", value: currency(monthlyDueTotal), accent: .purple)
                         }
                     }
                     .padding(14)
@@ -1609,6 +1857,13 @@ struct ScanView: View {
     @State private var isAnalyzing = false
     @State private var scanMessage = ""
     @State private var manualMealText = ""
+    @State private var mealDate = Date()
+    @State private var manualMealName = ""
+    @State private var manualCalories = ""
+    @State private var manualCarbs = ""
+    @State private var manualProtein = ""
+    @State private var manualFats = ""
+    @State private var manualEntryMessage = ""
 
     private var hasGeminiKey: Bool {
         guard let key = store.profile?.geminiAPIKey else { return false }
@@ -1693,6 +1948,40 @@ struct ScanView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
+                        VStack(alignment: .leading, spacing: 12) {
+                            Label("Enter meal manually", systemImage: "square.and.pencil")
+                                .font(.subheadline.weight(.semibold))
+
+                            RegistrationInputField(title: "Meal name", placeholder: "e.g. Chicken rice bowl", icon: "fork.knife", text: $manualMealName)
+
+                            DatePicker("Meal date", selection: $mealDate, displayedComponents: .date)
+
+                            HStack(spacing: 10) {
+                                NutritionEntryField(title: "Calories", placeholder: "0", unit: "kcal", text: $manualCalories)
+                                NutritionEntryField(title: "Carbs", placeholder: "0", unit: "g", text: $manualCarbs)
+                            }
+                            HStack(spacing: 10) {
+                                NutritionEntryField(title: "Protein", placeholder: "0", unit: "g", text: $manualProtein)
+                                NutritionEntryField(title: "Fats", placeholder: "0", unit: "g", text: $manualFats)
+                            }
+
+                            if !manualEntryMessage.isEmpty {
+                                Text(manualEntryMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+
+                            Button(action: submitManualEntry) {
+                                Label("Submit meal", systemImage: "plus.circle.fill")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.accentBlue)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
                         if isAnalyzing {
                             ProgressView("Analyzing with Gemini...")
                                 .frame(maxWidth: .infinity)
@@ -1717,6 +2006,7 @@ struct ScanView: View {
                                     .foregroundColor(isAnalyzing ? .orange : .green)
                             }
                             RegistrationInputField(title: "Meal name", placeholder: "Name this meal", icon: "fork.knife", text: $name)
+                            DatePicker("Meal date", selection: $mealDate, displayedComponents: .date)
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                                 ScanNutritionTile(title: "Calories", value: "\(a.calories)", unit: "kcal", color: .primaryOrange)
                                 ScanNutritionTile(title: "Protein", value: "\(a.protein)", unit: "g", color: .accentBlue)
@@ -1724,12 +2014,13 @@ struct ScanView: View {
                                 ScanNutritionTile(title: "Fats", value: "\(a.fats)", unit: "g", color: .purple)
                             }
                             Button(action: {
-                                let entry = FoodEntry(name: name, calories: a.calories, carbsGrams: a.carbs, proteinGrams: a.protein, fatsGrams: a.fats, source: .photo)
+                                let entry = FoodEntry(date: mealDate, name: name, calories: a.calories, carbsGrams: a.carbs, proteinGrams: a.protein, fatsGrams: a.fats, source: .photo)
                                 store.addEntry(entry)
                                 focusedField = nil
                                 pickedImage = nil
                                 analysis = nil
                                 manualMealText = ""
+                                mealDate = Date()
                             }) {
                                 Label("Add to today", systemImage: "plus.circle.fill")
                                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
@@ -1819,6 +2110,35 @@ struct ScanView: View {
             }
         }
     }
+
+    private func submitManualEntry() {
+        let trimmedName = manualMealName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty,
+              let calories = Int(manualCalories), calories >= 0,
+              let carbs = Int(manualCarbs), carbs >= 0,
+              let protein = Int(manualProtein), protein >= 0,
+              let fats = Int(manualFats), fats >= 0 else {
+            manualEntryMessage = "Enter a meal name and non-negative whole numbers for all nutrition values."
+            return
+        }
+
+        store.addEntry(FoodEntry(
+            date: mealDate,
+            name: trimmedName,
+            calories: calories,
+            carbsGrams: carbs,
+            proteinGrams: protein,
+            fatsGrams: fats,
+            source: .manual
+        ))
+        manualMealName = ""
+        manualCalories = ""
+        manualCarbs = ""
+        manualProtein = ""
+        manualFats = ""
+        manualEntryMessage = ""
+        mealDate = Date()
+    }
 }
 
 private enum ScanField: Hashable {
@@ -1843,6 +2163,34 @@ struct ScanNutritionTile: View {
         .padding(14)
         .background(color.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+struct NutritionEntryField: View {
+    let title: String
+    let placeholder: String
+    let unit: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.bold))
+                .foregroundColor(.secondary)
+            HStack(spacing: 4) {
+                TextField(placeholder, text: $text)
+                    .keyboardType(.numberPad)
+                    .textFieldStyle(.plain)
+                Text(unit)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 58)
+        .background(Color.appCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.accentBlue.opacity(text.isEmpty ? 0.12 : 0.55), lineWidth: 1.5))
     }
 }
 
