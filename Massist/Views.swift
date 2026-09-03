@@ -377,10 +377,10 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             HomeView().tabItem { Label("Home", systemImage: "house.fill") }.tag(0)
-            CaloriesView().tabItem { Label("Calories", systemImage: "fork.knife") }.tag(1)
-            BudgetTrackerView().tabItem { Label("Budget", systemImage: "chart.pie.fill") }.tag(2)
+            CaloriesView().tabItem { Label("Diet", systemImage: "fork.knife") }.tag(1)
+            BudgetTrackerView().tabItem { Label("Expenses", systemImage: "chart.pie.fill") }.tag(2)
             LoansTrackerView().tabItem { Label("Loans", systemImage: "banknote.fill") }.tag(3)
-            WorkoutView().tabItem { Label("Running", systemImage: "figure.run") }.tag(4)
+            WorkoutView().tabItem { Label("Activity", systemImage: "figure.run") }.tag(4)
             WaterView().tabItem { Label("Water", systemImage: "drop.fill") }.tag(5)
             ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(6)
             SettingsView().tabItem { Label("Settings", systemImage: "gearshape.fill") }.tag(7)
@@ -1021,7 +1021,7 @@ struct BudgetTrackerView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Budget")
+                        Text("Expenses")
                             .font(.system(size: 32, weight: .bold, design: .rounded))
                         Text("See where your everyday spending goes.")
                             .font(.subheadline)
@@ -1864,6 +1864,7 @@ struct ScanView: View {
     @State private var manualProtein = ""
     @State private var manualFats = ""
     @State private var manualEntryMessage = ""
+    @State private var selectedEntryMethod: MealEntryMethod = .photo
 
     private var hasGeminiKey: Bool {
         guard let key = store.profile?.geminiAPIKey else { return false }
@@ -1880,8 +1881,39 @@ struct ScanView: View {
                         Text("Scan your meal").font(.system(size: 32, weight: .bold, design: .rounded))
                         Text("Turn a photo into a simple nutrition snapshot.").font(.subheadline).foregroundColor(.secondary)
                     }
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Add a meal")
+                            .font(.headline)
+                        HStack(spacing: 8) {
+                            ForEach(MealEntryMethod.allCases) { method in
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        selectedEntryMethod = method
+                                    }
+                                } label: {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: method.icon)
+                                            .font(.headline)
+                                        Text(method.title)
+                                            .font(.caption.weight(.semibold))
+                                            .multilineTextAlignment(.center)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .frame(minHeight: 68)
+                                    .foregroundColor(selectedEntryMethod == method ? .white : .primary)
+                                    .background(selectedEntryMethod == method ? Color.accentBlue : Color.appCardBackground)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(method.title)
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
                     VStack(spacing: 16) {
-                        if let img = pickedImage {
+                        if selectedEntryMethod == .photo, let img = pickedImage {
                             Image(uiImage: img)
                                 .resizable()
                                 .scaledToFill()
@@ -1889,7 +1921,7 @@ struct ScanView: View {
                                 .frame(height: 250)
                                 .clipped()
                                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                        } else {
+                        } else if selectedEntryMethod == .photo {
                             VStack(spacing: 12) {
                                 Image(systemName: "viewfinder.circle.fill")
                                     .font(.system(size: 58))
@@ -1902,14 +1934,17 @@ struct ScanView: View {
                             .background(Color.primaryOrange.opacity(0.08))
                             .clipShape(RoundedRectangle(cornerRadius: 18))
                         }
-                        Button(action: { showingPicker = true }) {
-                            Label(pickedImage == nil ? "Choose food photo" : "Replace photo", systemImage: "camera.fill")
-                                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
+                        if selectedEntryMethod == .photo {
+                            Button(action: { showingPicker = true }) {
+                                Label(pickedImage == nil ? "Choose food photo" : "Replace photo", systemImage: "camera.fill")
+                                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.primaryOrange)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.primaryOrange)
 
-                        VStack(alignment: .leading, spacing: 8) {
+                        if selectedEntryMethod == .description {
+                            VStack(alignment: .leading, spacing: 8) {
                             Text("Or add a meal by description")
                                 .font(.subheadline.weight(.semibold))
                             TextField(
@@ -1945,10 +1980,12 @@ struct ScanView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                        VStack(alignment: .leading, spacing: 12) {
+                        if selectedEntryMethod == .manual {
+                            VStack(alignment: .leading, spacing: 12) {
                             Label("Enter meal manually", systemImage: "square.and.pencil")
                                 .font(.subheadline.weight(.semibold))
 
@@ -1979,8 +2016,9 @@ struct ScanView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .tint(.accentBlue)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         if isAnalyzing {
                             ProgressView("Analyzing with Gemini...")
@@ -2138,6 +2176,30 @@ struct ScanView: View {
         manualFats = ""
         manualEntryMessage = ""
         mealDate = Date()
+    }
+}
+
+private enum MealEntryMethod: String, CaseIterable, Identifiable {
+    case photo
+    case description
+    case manual
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .photo: return "Upload photo"
+        case .description: return "Describe meal"
+        case .manual: return "Enter manually"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .photo: return "camera.fill"
+        case .description: return "text.badge.checkmark"
+        case .manual: return "square.and.pencil"
+        }
     }
 }
 
@@ -2517,8 +2579,8 @@ struct WaterView: View {
                     .background(LinearGradient(colors: [.primaryOrange, Color(red: 0.94, green: 0.30, blue: 0.18)], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .clipShape(RoundedRectangle(cornerRadius: 24))
                     HStack(spacing: 12) {
-                        WaterAddButton(amount: 250, action: { addWater(250) })
                         WaterMinusButton(amount: 250, action: { minusWater(250) })
+                        WaterAddButton(amount: 250, action: { addWater(250) })
                     }
                     VStack(alignment: .leading, spacing: 14) {
                         HStack {
