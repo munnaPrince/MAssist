@@ -62,7 +62,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
         // Background tracking requires the Location background mode in the target.
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.showsBackgroundLocationIndicator = true
-
+        
         authorizationStatus = locationManager.authorizationStatus
     }
 

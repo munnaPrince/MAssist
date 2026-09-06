@@ -38,19 +38,20 @@ MAssist is a SwiftUI iOS app for tracking nutrition, hydration, exercise, everyd
 
 The Xcode project is in the `Massist` directory.
 
-- `MassistApp.swift` - App entry point and shared `AppStore` injection.
-- `Views.swift` - SwiftUI navigation, dashboards, trackers, forms, exports, and mail reporting.
-- `Models 2.swift` - User, nutrition, loan, and budget record models.
-- `Storage.swift` - Observable app state and UserDefaults persistence for loans and budget records.
-- `DataService.swift` - Core Data operations and Gemini networking services.
-- `CoreDataStack.swift` - Programmatically-created Core Data model and persistent container.
-- `ManagedObjects.swift` - Core Data managed objects and model conversion helpers.
-- `WorkoutTracker.swift` - Location, workout timing, and step tracking.
-- `WorkoutView.swift` and `WorkoutMapView.swift` - Workout interface and route map.
-- `ImagePicker.swift` - Photo library image picker.
-- `MacroTargets.swift` - Nutrition target calculations.
-- `WorkoutType.swift` - Workout types and SF Symbol mappings.
-- `Assets.xcassets` - App colors and icons.
+- `App/MassistApp.swift` - App entry point and shared `AppStore` injection.
+- `App/AppViews.swift` - SwiftUI navigation, dashboards, nutrition, finance, settings, exports, and mail reporting.
+- `Core/Models.swift` - User, nutrition, loan, and budget record models.
+- `Core/Storage.swift` - Observable app state and UserDefaults persistence for loans and budget records.
+- `Core/DataService.swift` - Core Data operations and Gemini networking services.
+- `Core/CoreDataStack.swift` - Programmatically-created Core Data model and persistent container.
+- `Core/ManagedObjects.swift` - Core Data managed objects and model conversion helpers.
+- `Core/MacroTargets.swift` - Nutrition target calculations.
+- `Features/Workout/WorkoutTracker.swift` - Location, workout timing, and step tracking.
+- `Features/Workout/WorkoutView.swift` and `Features/Workout/WorkoutMapView.swift` - Workout interface and route map.
+- `Features/Workout/WorkoutType.swift` - Workout types and SF Symbol mappings.
+- `Shared/ImagePicker.swift` - Photo library image picker.
+- `Resources/Assets.xcassets` - App colors and icons.
+- `Resources/prompt.txt` - Gemini nutrition assistant prompt template.
 
 ## Requirements
 
