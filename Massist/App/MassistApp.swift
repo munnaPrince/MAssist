@@ -21,6 +21,7 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
 @main
 struct MassistApp: App {
     @StateObject private var store = AppStore()
+    @StateObject private var workoutHistoryStore = WorkoutHistoryStore()
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     private let notificationDelegate = AppNotificationDelegate()
 
@@ -33,6 +34,7 @@ struct MassistApp: App {
             ContentView()
                 .preferredColorScheme(appTheme.colorScheme)
                 .environmentObject(store)
+                .environmentObject(workoutHistoryStore)
                 .environment(\.managedObjectContext, CoreDataStack.shared.container.viewContext)
         }
     }

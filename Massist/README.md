@@ -13,6 +13,9 @@ MAssist is a SwiftUI iOS app for tracking nutrition, hydration, exercise, everyd
 - Editable and deletable meal timeline entries.
 - Water intake tracking with configurable goals and workday reminders.
 - Walking, jogging, and running workouts with route, distance, duration, pace, calories, and step count.
+- Saved workout history with CSV-backed records and map route snapshots.
+- Weekly workout step chart with previous-week navigation.
+- Configurable daily step target in Profile.
 - Home dashboard with nutrition, hydration, steps, and finance summaries.
 
 ### Finance tracking
@@ -48,6 +51,7 @@ The Xcode project is in the `Massist` directory.
 - `Core/MacroTargets.swift` - Nutrition target calculations.
 - `Features/Workout/WorkoutTracker.swift` - Location, workout timing, and step tracking.
 - `Features/Workout/WorkoutView.swift` and `Features/Workout/WorkoutMapView.swift` - Workout interface and route map.
+- `Features/Workout/WorkoutHistoryStore.swift` and `Features/Workout/WorkoutHistoryView.swift` - CSV-backed workout history, map snapshots, and weekly steps chart.
 - `Features/Workout/WorkoutType.swift` - Workout types and SF Symbol mappings.
 - `Shared/ImagePicker.swift` - Photo library image picker.
 - `Resources/Assets.xcassets` - App colors and icons.

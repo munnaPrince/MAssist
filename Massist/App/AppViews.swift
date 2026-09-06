@@ -7,6 +7,7 @@
 
 import SwiftUI
 import CoreMotion
+import Charts
 import MessageUI
 import UserNotifications
 import UniformTypeIdentifiers
@@ -409,6 +410,7 @@ struct CaloriesView: View {
 
 struct HomeView: View {
     @EnvironmentObject var store: AppStore
+    @EnvironmentObject private var workoutHistoryStore: WorkoutHistoryStore
     @State private var motivation = ""
     @State private var motivationStatus = "Loading your daily motivation..."
     @State private var todaySteps = 0
@@ -528,6 +530,8 @@ struct HomeView: View {
                         .padding(18)
                         .background(Color.appCardBackground)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                        WeeklyStepsChart(stepTarget: store.profile?.stepTarget ?? 10000)
 
                         VStack(alignment: .leading, spacing: 14) {
                             HStack {
@@ -2688,6 +2692,7 @@ struct ProfileView: View {
     @State private var calorieTarget = ""
     @State private var proteinTarget = ""
     @State private var fatTarget = ""
+    @State private var stepTarget = "10000"
     @State private var customTargets = false
     @State private var savedMessage = false
     @State private var isEditing = false
@@ -2756,6 +2761,18 @@ struct ProfileView: View {
                                 ProfilePickerField(title: "Age", unit: "years", icon: "calendar", value: $age, range: 13...100, isEditable: isEditing)
                                 ProfilePickerField(title: "Weight", unit: "kg", icon: "scalemass.fill", value: $weight, range: 30...250, isEditable: isEditing)
                                 ProfilePickerField(title: "Height", unit: "cm", icon: "ruler.fill", value: $height, range: 100...230, isEditable: isEditing)
+                            }
+                            .padding(20)
+                            .background(.regularMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                            VStack(alignment: .leading, spacing: 14) {
+                                Label("Activity target", systemImage: "shoeprints.fill")
+                                    .font(.headline)
+                                Text("Set the daily step count used by Home and the weekly chart.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                OnboardingMetricField(title: "Daily steps", value: $stepTarget, unit: "steps", icon: "shoeprints.fill", isDecimal: false, isEditable: isEditing)
                             }
                             .padding(20)
                             .background(.regularMaterial)
@@ -2942,6 +2959,7 @@ struct ProfileView: View {
         calorieTarget = String(targets.calories)
         proteinTarget = String(targets.proteinGrams)
         fatTarget = String(targets.fatsGrams)
+        stepTarget = String(profile.stepTarget ?? 10000)
     }
 
     private func saveProfile() {
@@ -2952,6 +2970,7 @@ struct ProfileView: View {
         profile.age = age
         profile.weightKg = Double(weight)
         profile.heightCm = Double(height)
+        profile.stepTarget = max(1000, Int(stepTarget) ?? 10000)
         if customTargets {
             var suggestedProfile = profile
             suggestedProfile.calorieTarget = nil

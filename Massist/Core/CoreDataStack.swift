@@ -91,6 +91,7 @@ final class CoreDataStack {
         userProperties.append(optionalIntAttr("calorieTarget"))
         userProperties.append(optionalIntAttr("proteinTarget"))
         userProperties.append(optionalIntAttr("fatTarget"))
+        userProperties.append(optionalIntAttr("stepTarget"))
 
         let geminiAPIKeyAttr = NSAttributeDescription()
         geminiAPIKeyAttr.name = "geminiAPIKey"

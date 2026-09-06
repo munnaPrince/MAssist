@@ -3,6 +3,8 @@ import CoreLocation
 
 struct WorkoutView: View {
 
+    @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var historyStore: WorkoutHistoryStore
     @StateObject private var tracker = WorkoutTracker()
 
     @State private var selectedWorkout: WorkoutType = .walking
@@ -13,7 +15,6 @@ struct WorkoutView: View {
 
     @State private var showingSummary = false
 
-    // Change this later to your user's actual profile weight.
     @State private var userWeightKg: Double = 70
 
     var body: some View {
@@ -36,6 +37,16 @@ struct WorkoutView: View {
             }
             .navigationTitle("Workout")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        WorkoutHistoryView()
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .accessibilityLabel("Workout history")
+                }
+            }
             .alert(
                 "Location Permission Required",
                 isPresented: $showingPermissionAlert
@@ -77,7 +88,7 @@ struct WorkoutView: View {
 
                 WorkoutSummaryView(
                     tracker: tracker,
-                    weightKg: userWeightKg
+                    weightKg: store.profile?.weightKg ?? userWeightKg
                 )
             }
         }
@@ -238,7 +249,7 @@ struct WorkoutView: View {
 
                 StatCard(
                     title: "Calories",
-                    value: String(format: "%.0f kcal", tracker.estimatedCalories(weightKg: 70)),
+                    value: String(format: "%.0f kcal", tracker.estimatedCalories(weightKg: store.profile?.weightKg ?? userWeightKg)),
                     systemImage: "flame.fill"
                 )
             }
@@ -425,12 +436,15 @@ struct WorkoutView: View {
 }
 struct WorkoutSummaryView: View {
 
+    @EnvironmentObject private var historyStore: WorkoutHistoryStore
     @ObservedObject var tracker: WorkoutTracker
 
     let weightKg: Double
 
     @Environment(\.dismiss)
     private var dismiss
+    @State private var isSaving = false
+    @State private var saveMessage = ""
 
     var body: some View {
 
@@ -513,19 +527,35 @@ struct WorkoutSummaryView: View {
                         )
                     )
 
+                    if !saveMessage.isEmpty {
+                        Text(saveMessage)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Button {
+                        Task {
+                            isSaving = true
+                            await historyStore.saveWorkout(tracker: tracker, weightKg: weightKg)
+                            isSaving = false
+                            saveMessage = "Workout saved to history."
+                        }
+                    } label: {
+                        Label(isSaving ? "Saving..." : "Save workout", systemImage: "square.and.arrow.down.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.primaryOrange)
+                    .disabled(isSaving)
+
                     Button("Done") {
-
                         tracker.reset()
-
                         dismiss()
-
                     }
                     .buttonStyle(
                         .borderedProminent
                     )
-                    .tint(
-                        .primaryOrange
-                    )
+                    .tint(.accentBlue)
                 }
                 .padding()
             }

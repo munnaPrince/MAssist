@@ -17,9 +17,10 @@ struct UserProfile: Codable, Equatable {
     var calorieTarget: Int?
     var proteinTarget: Int?
     var fatTarget: Int?
+    var stepTarget: Int?
     var geminiAPIKey: String?
 
-    init(name: String = "", email: String, gender: String? = nil, age: Int? = nil, weightKg: Double? = nil, heightCm: Double? = nil, goal: GoalType? = nil, calorieTarget: Int? = nil, proteinTarget: Int? = nil, fatTarget: Int? = nil, geminiAPIKey: String? = nil) {
+    init(name: String = "", email: String, gender: String? = nil, age: Int? = nil, weightKg: Double? = nil, heightCm: Double? = nil, goal: GoalType? = nil, calorieTarget: Int? = nil, proteinTarget: Int? = nil, fatTarget: Int? = nil, stepTarget: Int? = nil, geminiAPIKey: String? = nil) {
         self.name = name
         self.email = email
         self.gender = gender
@@ -30,6 +31,7 @@ struct UserProfile: Codable, Equatable {
         self.calorieTarget = calorieTarget
         self.proteinTarget = proteinTarget
         self.fatTarget = fatTarget
+        self.stepTarget = stepTarget
         self.geminiAPIKey = geminiAPIKey
     }
 }
