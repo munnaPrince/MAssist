@@ -1207,17 +1207,24 @@ struct BudgetTrackerView: View {
                         .background(Color.primaryOrange.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                     } else {
-                        VStack(spacing: 0) {
-                            ForEach(store.budgetRecords) { record in
-                                BudgetRecordRow(record: record, onDelete: { store.deleteBudgetRecord(record) })
-                                if record.id != store.budgetRecords.last?.id {
-                                    Divider().padding(.leading, 52)
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(groupedBudgetHistory(store.budgetRecords)) { day in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    BudgetDayHeader(day: day.date, total: day.total)
+                                    VStack(spacing: 0) {
+                                        ForEach(day.records) { record in
+                                            BudgetRecordRow(record: record, onDelete: { store.deleteBudgetRecord(record) })
+                                            if record.id != day.records.last?.id {
+                                                Divider().padding(.leading, 52)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .background(Color.appCardBackground)
+                                    .clipShape(RoundedRectangle(cornerRadius: 18))
                                 }
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .background(Color.appCardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
                     }
                 }
                 .padding(20)
@@ -1243,6 +1250,14 @@ struct BudgetTrackerView: View {
         recordAmount = ""
         recordDate = Date()
         message = ""
+    }
+
+    private func groupedBudgetHistory(_ records: [BudgetRecord]) -> [BudgetDayGroup] {
+        Dictionary(grouping: records) { Calendar.current.startOfDay(for: $0.date) }
+            .map { date, records in
+                BudgetDayGroup(date: date, records: records.sorted { $0.date > $1.date }, total: records.reduce(0) { $0 + $1.amount })
+            }
+            .sorted { $0.date > $1.date }
     }
 
     private func addReceiptRecord() {
@@ -2281,7 +2296,7 @@ struct TrackerView: View {
 
     var body: some View {
         let totals = dailyTotals(entries: store.entries)
-        let todayEntries = entriesForToday(store.entries)
+        let mealDays = groupedMealHistory(store.entries)
         let targets = store.profile.map { MacroCalculator.targets(for: $0) }
 
         ZStack {
@@ -2352,18 +2367,18 @@ struct TrackerView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20))
 
                     HStack {
-                        Label("Meal timeline", systemImage: "clock.fill").font(.headline)
+                        Label("Meal history", systemImage: "clock.fill").font(.headline)
                         Spacer()
-                        Text("\(todayEntries.count) logged").font(.caption).foregroundColor(.secondary)
+                        Text("\(store.entries.count) logged").font(.caption).foregroundColor(.secondary)
                     }
 
-                    if todayEntries.isEmpty {
+                    if mealDays.isEmpty {
                         VStack(spacing: 10) {
                             Image(systemName: "fork.knife.circle.fill")
                                 .font(.system(size: 42))
                                 .foregroundColor(.primaryOrange)
-                            Text("Your day starts here").font(.headline)
-                            Text("Scan a meal to build your nutrition timeline.")
+                            Text("Your meal history starts here").font(.headline)
+                            Text("Scan or add a meal to build your nutrition history.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
@@ -2373,28 +2388,35 @@ struct TrackerView: View {
                         .background(Color.primaryOrange.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                     } else {
-                        VStack(spacing: 0) {
-                            ForEach(todayEntries) { entry in
-                                TrackerMealRow(
-                                    entry: entry,
-                                    onEdit: {
-                                        editingEntry = entry
-                                        editedName = entry.name
-                                        editedCalories = String(entry.calories)
-                                        editedProtein = String(entry.proteinGrams)
-                                        editedCarbs = String(entry.carbsGrams)
-                                        editedFats = String(entry.fatsGrams)
-                                    },
-                                    onDelete: { store.deleteEntry(entry) }
-                                )
-                                if entry.id != todayEntries.last?.id {
-                                    Divider().padding(.leading, 52)
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(mealDays) { day in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    MealDayHeader(day: day.date, calories: day.calories, protein: day.protein, carbs: day.carbs, fats: day.fats)
+                                    VStack(spacing: 0) {
+                                        ForEach(day.entries) { entry in
+                                            TrackerMealRow(
+                                                entry: entry,
+                                                onEdit: {
+                                                    editingEntry = entry
+                                                    editedName = entry.name
+                                                    editedCalories = String(entry.calories)
+                                                    editedProtein = String(entry.proteinGrams)
+                                                    editedCarbs = String(entry.carbsGrams)
+                                                    editedFats = String(entry.fatsGrams)
+                                                },
+                                                onDelete: { store.deleteEntry(entry) }
+                                            )
+                                            if entry.id != day.entries.last?.id {
+                                                Divider().padding(.leading, 52)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .background(Color.appCardBackground)
+                                    .clipShape(RoundedRectangle(cornerRadius: 18))
                                 }
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .background(Color.appCardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
                     }
                 }
                 .padding(20)
@@ -2449,15 +2471,88 @@ struct TrackerView: View {
         }
     }
 
-    private func entriesForToday(_ entries: [FoodEntry]) -> [FoodEntry] {
-        let today = Calendar.current.startOfDay(for: Date())
-        return entries.filter { Calendar.current.startOfDay(for: $0.date) == today }.sorted { $0.date > $1.date }
+    private func groupedMealHistory(_ entries: [FoodEntry]) -> [MealDayGroup] {
+        Dictionary(grouping: entries) { Calendar.current.startOfDay(for: $0.date) }
+            .map { date, entries in
+                MealDayGroup(
+                    date: date,
+                    entries: entries.sorted { $0.date > $1.date },
+                    calories: entries.reduce(0) { $0 + $1.calories },
+                    protein: entries.reduce(0) { $0 + $1.proteinGrams },
+                    carbs: entries.reduce(0) { $0 + $1.carbsGrams },
+                    fats: entries.reduce(0) { $0 + $1.fatsGrams }
+                )
+            }
+            .sorted { $0.date > $1.date }
     }
 
     func dailyTotals(entries: [FoodEntry]) -> (calories:Int, protein:Int, carbs:Int, fats:Int) {
         let today = Calendar.current.startOfDay(for: Date())
         let s = entries.filter { Calendar.current.startOfDay(for: $0.date) == today }
         return (s.reduce(0) { $0 + $1.calories }, s.reduce(0) { $0 + $1.proteinGrams }, s.reduce(0) { $0 + $1.carbsGrams }, s.reduce(0) { $0 + $1.fatsGrams })
+    }
+}
+
+private struct MealDayGroup: Identifiable {
+    let date: Date
+    let entries: [FoodEntry]
+    let calories: Int
+    let protein: Int
+    let carbs: Int
+    let fats: Int
+
+    var id: Date { date }
+}
+
+private struct MealDayHeader: View {
+    let day: Date
+    let calories: Int
+    let protein: Int
+    let carbs: Int
+    let fats: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(day, format: .dateTime.weekday(.wide).month(.wide).day().year())
+                .font(.subheadline.weight(.bold))
+            Text("\(calories) kcal  •  P \(protein) g  •  C \(carbs) g  •  F \(fats) g")
+                .font(.caption.weight(.medium))
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+private struct BudgetDayGroup: Identifiable {
+    let date: Date
+    let records: [BudgetRecord]
+    let total: Double
+
+    var id: Date { date }
+}
+
+private struct BudgetDayHeader: View {
+    let day: Date
+    let total: Double
+
+    var body: some View {
+        HStack {
+            Text(day, format: .dateTime.weekday(.wide).month(.wide).day().year())
+                .font(.subheadline.weight(.bold))
+            Spacer()
+            Text(currency(total))
+                .font(.subheadline.weight(.bold))
+                .foregroundColor(.primaryOrange)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func currency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
     }
 }
 
@@ -2510,7 +2605,12 @@ struct TrackerMealRow: View {
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.name).font(.subheadline.weight(.semibold))
-                    Text(entry.date, style: .time).font(.caption).foregroundColor(.secondary)
+                    Text(entry.date, style: .date)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(entry.date, style: .time)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 3) {

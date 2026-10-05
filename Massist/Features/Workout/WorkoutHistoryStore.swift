@@ -103,7 +103,7 @@ final class WorkoutHistoryStore: ObservableObject {
         guard let data = try? Data(contentsOf: csvURL),
               let contents = String(data: data, encoding: .utf8) else { return [] }
         return contents
-            .split(separator: "\n")
+            .split(whereSeparator: \.isNewline)
             .dropFirst()
             .compactMap { WorkoutCSVCodec.decode(String($0)) }
             .sorted { $0.date > $1.date }
@@ -154,9 +154,14 @@ enum WorkoutCSVCodec {
               let speed = Double(values[5]),
               let steps = Int(values[6]),
               let calories = Double(values[7]),
-              let routeData = Data(base64Encoded: values[8]),
-              let route = try? JSONDecoder().decode([WorkoutCoordinate].self, from: routeData) else { return nil }
+              let route = decodeRoute(values[8]) else { return nil }
         return WorkoutRecord(id: id, date: date, workoutType: workoutType, distanceMeters: distance, duration: duration, averageSpeed: speed, steps: steps, calories: calories, route: route, mapSnapshotFilename: values[9].isEmpty ? nil : values[9])
+    }
+
+    private static func decodeRoute(_ value: String) -> [WorkoutCoordinate]? {
+        guard !value.isEmpty else { return [] }
+        guard let data = Data(base64Encoded: value) else { return nil }
+        return try? JSONDecoder().decode([WorkoutCoordinate].self, from: data)
     }
 
     nonisolated private static func escape(_ value: String) -> String {

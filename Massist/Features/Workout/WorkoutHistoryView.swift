@@ -19,8 +19,15 @@ struct WorkoutHistoryView: View {
                 if historyStore.records.isEmpty {
                     ContentUnavailableView("No workouts saved", systemImage: "figure.walk", description: Text("Finish a workout and tap Save workout to build your history."))
                 } else {
-                    ForEach(historyStore.records) { record in
-                        WorkoutHistoryCard(record: record, imageURL: historyStore.snapshotURL(for: record))
+                    ForEach(groupedWorkoutHistory(historyStore.records)) { day in
+                        VStack(alignment: .leading, spacing: 8) {
+                            WorkoutDayHeader(day: day.date, steps: day.steps, distanceMeters: day.distanceMeters, calories: day.calories)
+                            VStack(spacing: 12) {
+                                ForEach(day.records) { record in
+                                    WorkoutHistoryCard(record: record, imageURL: historyStore.snapshotURL(for: record))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -29,6 +36,48 @@ struct WorkoutHistoryView: View {
         .background(Color.appBackground.ignoresSafeArea())
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func groupedWorkoutHistory(_ records: [WorkoutRecord]) -> [WorkoutDayGroup] {
+        Dictionary(grouping: records) { Calendar.current.startOfDay(for: $0.date) }
+            .map { date, records in
+                WorkoutDayGroup(
+                    date: date,
+                    records: records.sorted { $0.date > $1.date },
+                    steps: records.reduce(0) { $0 + $1.steps },
+                    distanceMeters: records.reduce(0) { $0 + $1.distanceMeters },
+                    calories: records.reduce(0) { $0 + $1.calories }
+                )
+            }
+            .sorted { $0.date > $1.date }
+    }
+}
+
+private struct WorkoutDayGroup: Identifiable {
+    let date: Date
+    let records: [WorkoutRecord]
+    let steps: Int
+    let distanceMeters: Double
+    let calories: Double
+
+    var id: Date { date }
+}
+
+private struct WorkoutDayHeader: View {
+    let day: Date
+    let steps: Int
+    let distanceMeters: Double
+    let calories: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(day, format: .dateTime.weekday(.wide).month(.wide).day().year())
+                .font(.subheadline.weight(.bold))
+            Text("\(steps) steps  •  \(String(format: "%.2f km", distanceMeters / 1000))  •  \(String(format: "%.0f kcal", calories))")
+                .font(.caption.weight(.medium))
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 4)
     }
 }
 
